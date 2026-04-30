@@ -1,0 +1,9 @@
+requests==2.31.0
+aiohttp==3.9.1
+praw==7.7.1
+telethon==1.34.0
+python-dotenv==1.0.0
+google-generativeai==0.4.1
+pandas==2.1.4
+numpy==1.26.3
+schedule==1.2.1
