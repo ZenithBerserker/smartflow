@@ -86,10 +86,19 @@ export default function Home() {
   // Draw candlestick chart using canvas
   useEffect(()=>{
     if(!priceData?.candles||!chartRef.current) return;
+    // Small delay to ensure DOM is laid out
+    const timer = setTimeout(drawChart, 50);
+    return () => clearTimeout(timer);
+  },[priceData,chartTf]);
+
+  const drawChart = () => {
+    if(!priceData?.candles||!chartRef.current) return;
     const canvas=chartRef.current;
     const dpr=window.devicePixelRatio||1;
-    const W=canvas.offsetWidth, H=canvas.offsetHeight;
+    const W=canvas.parentElement?.offsetWidth||600;
+    const H=200;
     canvas.width=W*dpr; canvas.height=H*dpr;
+    canvas.style.width=W+"px"; canvas.style.height=H+"px";
     const ctx=canvas.getContext("2d");
     ctx.scale(dpr,dpr);
 
@@ -151,7 +160,7 @@ export default function Home() {
       const d=new Date(candles[i].t);
       ctx.fillText(d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),x,H-8);
     }
-  },[priceData,chartTf]);
+    };
 
   const runPipeline=async()=>{
     if(loading)return; setLoading(true); setResult(null); addLog(`initiating pipeline for ${selected}...`);
@@ -285,7 +294,7 @@ export default function Home() {
                 <button onClick={()=>fetchPrice(selected)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
             </div>
-            <canvas ref={chartRef} style={{width:"100%",height:200,display:"block"}}/>
+            <canvas ref={chartRef} width={600} height={200} style={{width:"100%",height:"200px",display:"block"}}/>
           </div>
         </div>
 
