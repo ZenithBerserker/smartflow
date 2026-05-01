@@ -68,23 +68,49 @@ function buildMacd(candles) {
   return line.map((v,i)=>Number.isFinite(v)&&Number.isFinite(signal[i])?{line:v,signal:signal[i],hist:v-signal[i]}:null);
 }
 
-function buildChartStudies(candles, showSignals=false) {
+function buildSignalMarkers(candles, nw, zones, macd, timeframe) {
+  if(timeframe!=="4h"&&timeframe!=="1d") return [];
+  const minGap=timeframe==="4h"?30:7;
+  const candidates=[];
+
+  candles.forEach((c,i)=>{
+    if(i<2) return;
+    const n=nw[i], prevN=nw[i-1], z=zones[i], m=macd[i], prevM=macd[i-1];
+    if(!n||!prevN||!z||!m||!prevM) return;
+    const bullishTurn=c.c>n.mid&&candles[i-1].c<=prevN.mid;
+    const bearishTurn=c.c<n.mid&&candles[i-1].c>=prevN.mid;
+    const macdBull=m.line>m.signal&&m.hist>0&&m.hist>prevM.hist;
+    const macdBear=m.line<m.signal&&m.hist<0&&m.hist<prevM.hist;
+    const zoneBull=z.trend==="bull"&&c.c>=z.basis;
+    const zoneBear=z.trend==="bear"&&c.c<=z.basis;
+    const recent=candles.slice(Math.max(0,i-6),i+1);
+    const nearLocalLow=c.l<=Math.min(...recent.map(v=>v.l))*1.01;
+    const nearLocalHigh=c.h>=Math.max(...recent.map(v=>v.h))*0.99;
+
+    if(bullishTurn&&zoneBull&&macdBull&&nearLocalLow){
+      candidates.push({type:"buy",price:c.l,index:i,strength:Math.abs(m.hist)});
+    }
+    if(bearishTurn&&zoneBear&&macdBear&&nearLocalHigh){
+      candidates.push({type:"sell",price:c.h,index:i,strength:Math.abs(m.hist)});
+    }
+  });
+
+  return candidates.reduce((markers,candidate)=>{
+    const last=markers[markers.length-1];
+    if(!last||candidate.index-last.index>=minGap){
+      markers.push(candidate);
+      return markers;
+    }
+    if(candidate.strength>last.strength) markers[markers.length-1]=candidate;
+    return markers;
+  },[]).slice(-4);
+}
+
+function buildChartStudies(candles, signalTimeframe=null) {
   const nw=buildNadaraya(candles);
   const zones=buildZones(candles);
   const macd=buildMacd(candles);
-  const markers=showSignals?candles.map((c,i)=>{
-    const n=nw[i], z=zones[i], m=macd[i];
-    if(!n||!z||!m) return null;
-    const nwBull=c.c>=n.mid&&n.mid>=(nw[i-1]?.mid??n.mid);
-    const zoneBull=z.trend==="bull"&&c.c>=z.basis;
-    const macdBull=m.line>=m.signal&&m.hist>=0;
-    const nwBear=c.c<=n.mid&&n.mid<=(nw[i-1]?.mid??n.mid);
-    const zoneBear=z.trend==="bear"&&c.c<=z.basis;
-    const macdBear=m.line<=m.signal&&m.hist<=0;
-    if(nwBull&&zoneBull&&macdBull) return {type:"buy",price:c.l,index:i};
-    if(nwBear&&zoneBear&&macdBear) return {type:"sell",price:c.h,index:i};
-    return null;
-  }):[];
+  const markers=buildSignalMarkers(candles,nw,zones,macd,signalTimeframe);
   return {nw,zones,macd,markers};
 }
 
@@ -93,7 +119,7 @@ export default function Home() {
   const [zscores,setZscores]=useState([]);
   const [result,setResult]=useState(null);
   const [loading,setLoading]=useState(false);
-  const [log,setLog]=useState(["system initialized. select ticker and run pipeline."]);
+  const [log,setLog]=useState(["ready. choose a token and run scan."]);
   const [tab,setTab]=useState("pipeline");
   const [lookupQuery,setLookupQuery]=useState("");
   const [lookupResult,setLookupResult]=useState(null);
@@ -227,7 +253,7 @@ export default function Home() {
     const visibleCount=Math.max(12,Math.ceil(allCandles.length/chartZoom));
     const offset=Math.max(0,allCandles.length-visibleCount);
     const candles=allCandles.slice(offset);
-    const studies=buildChartStudies(candles,chartTf==="4h"||chartTf==="1d");
+    const studies=buildChartStudies(candles,chartTf);
     const pad={top:18,right:68,bottom:28,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
 
@@ -406,7 +432,7 @@ export default function Home() {
   };
 
   const runPipeline=async()=>{
-    if(loading)return; setLoading(true); setResult(null); addLog(`initiating pipeline for ${selected}...`);
+    if(loading)return; setLoading(true); setResult(null); addLog(`scan started for ${selected}...`);
     try{
       const r=await fetch(`/api/pipeline?ticker=${selected}`); const d=await r.json(); setResult(d);
       d.steps?.forEach(s=>{
@@ -536,14 +562,14 @@ export default function Home() {
   `;
 
   return(<>
-    <Head><title>BlackCat — Altcoin Momentum Engine</title><meta name="viewport" content="width=device-width,initial-scale=1"/><style>{css}</style></Head>
+    <Head><title>BlackCat — Market Scanner</title><meta name="viewport" content="width=device-width,initial-scale=1"/><style>{css}</style></Head>
     <div className="app-shell" style={{maxWidth:980,margin:"0 auto",padding:"20px 16px",overflow:"hidden"}}>
 
       {/* Header */}
       <div className="app-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
         <div className="brand-row" style={{display:"flex",alignItems:"center",gap:14}}>
           <div className="brand-title" style={{fontSize:24,fontWeight:700,fontFamily:"'Share Tech Mono',monospace",color:"#00ff88",textShadow:"0 0 15px #00ff8877,0 0 40px #00ff8822",letterSpacing:".12em",animation:"flicker 8s infinite"}}>BLACKCAT</div>
-          <div className="brand-subtitle" style={{fontSize:10,color:"#2a4455",fontFamily:"'Share Tech Mono',monospace"}}>/altcoin momentum engine v2.2</div>
+          <div className="brand-subtitle" style={{fontSize:10,color:"#2a4455",fontFamily:"'Share Tech Mono',monospace"}}>market scanner</div>
         </div>
         <div className="live-status" style={{display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>
           <span style={{width:6,height:6,borderRadius:"50%",background:"#00ff88",display:"inline-block",animation:"pulse 2s infinite",boxShadow:"0 0 8px #00ff88"}}/>
@@ -555,7 +581,7 @@ export default function Home() {
 
       {/* Tabs */}
       <div className="tabs" style={{display:"flex",gap:8,marginBottom:16}}>
-        {[["pipeline","pipeline"],["discover","new tokens"],["lookup","token lookup"]].map(([id,label])=>(
+        {[["pipeline","Scanner"],["discover","Trending"],["lookup","Lookup"]].map(([id,label])=>(
           <button key={id} className={`tab-btn${tab===id?" active":""}`} onClick={()=>setTab(id)}>{label}</button>
         ))}
       </div>
@@ -566,7 +592,7 @@ export default function Home() {
         {/* Ticker selector */}
         <div className="ticker-bar" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:14,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-            <span style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>TOKEN</span>
+            <span style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Token</span>
             <select className="token-select" value={selected} onChange={(event)=>setSelected(event.target.value)}>
               {TRACKED_TICKERS.map(t=>{
                 const z=zscores.find(z=>z.ticker===t);
@@ -576,7 +602,7 @@ export default function Home() {
             </select>
           </div>
           <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>
-            {TRACKED_TICKERS.length} tracked tokens
+            {TRACKED_TICKERS.length} tokens
           </div>
         </div>
 
@@ -585,24 +611,24 @@ export default function Home() {
 
           {/* Price panel */}
           <div className="panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"14px 16px"}}>
-            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:10}}>PRICE — {selected}</div>
-            {priceLoading?<div style={{fontSize:12,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>fetching...</div>:<>
+            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em",marginBottom:10}}>Price · {selected}</div>
+            {priceLoading?<div style={{fontSize:12,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>Loading...</div>:<>
               <div className="price-value" style={{fontSize:28,fontWeight:700,color:"#c8d8e8",marginBottom:4,lineHeight:1}}>{fmtPrice(priceData?.price_usd)}</div>
               <div className="price-change" style={{fontSize:16,fontWeight:600,color:pc>=0?"#00ff88":"#ff4466",textShadow:pc>=0?"0 0 8px #00ff8866":"0 0 8px #ff446666",marginBottom:14}}>
                 {pc>=0?"+":""}{pc?.toFixed(2)||"0.00"}% 24h
               </div>
               <div className="price-stat-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                 {[
-                  ["VOL 24H",fmtNum(priceData?.volume_24h)],
-                  ["LIQUIDITY",fmtNum(priceData?.liquidity_usd)],
-                  ["MKT CAP",fmtNum(priceData?.market_cap)],
-                  ["BUYS/SELLS",`${priceData?.buys_24h||"—"}/${priceData?.sells_24h||"—"}`],
-                  ["1H CHNG",(()=>{const v=priceData?.price_change?.h1; return v!==undefined?(v>=0?"+":"")+v.toFixed(2)+"%":"—"})()],
-                  ["6H CHNG",(()=>{const v=priceData?.price_change?.h6; return v!==undefined?(v>=0?"+":"")+v.toFixed(2)+"%":"—"})()],
+                  ["Vol 24h",fmtNum(priceData?.volume_24h)],
+                  ["Liquidity",fmtNum(priceData?.liquidity_usd)],
+                  ["Market cap",fmtNum(priceData?.market_cap)],
+                  ["Buys / sells",`${priceData?.buys_24h||"—"}/${priceData?.sells_24h||"—"}`],
+                  ["1h change",(()=>{const v=priceData?.price_change?.h1; return v!==undefined?(v>=0?"+":"")+v.toFixed(2)+"%":"—"})()],
+                  ["6h change",(()=>{const v=priceData?.price_change?.h6; return v!==undefined?(v>=0?"+":"")+v.toFixed(2)+"%":"—"})()],
                 ].map(([l,v])=>(
                   <div key={l} style={{background:"#070a0f",borderRadius:4,padding:"6px 8px"}}>
                     <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:2}}>{l}</div>
-                    <div style={{fontSize:11,fontWeight:600,color:(l.includes("CHNG")&&v?.startsWith("+"))?"#00ff88":(l.includes("CHNG")&&v?.startsWith("-"))?"#ff4466":"#99bbcc"}}>{v}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:(l.includes("change")&&v?.startsWith("+"))?"#00ff88":(l.includes("change")&&v?.startsWith("-"))?"#ff4466":"#99bbcc"}}>{v}</div>
                   </div>
                 ))}
               </div>
@@ -616,7 +642,7 @@ export default function Home() {
           {/* Candlestick chart */}
           <div className="chart-panel" style={chartExpanded?{position:"fixed",inset:10,zIndex:20,background:"#0a0f16",border:"1px solid #1a4a5a",borderRadius:8,padding:"10px 12px",boxShadow:"0 0 40px #000b",display:"flex",flexDirection:"column"}:{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"10px 12px"}}>
             <div className="chart-header" style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8,gap:8,flexWrap:"wrap"}}>
-              <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>PRICE CHART — {selected} / USD</div>
+              <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Chart · {selected}/USD</div>
               <div className="chart-controls" style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
                 {CHART_TFS.map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
@@ -643,14 +669,14 @@ export default function Home() {
         {/* Mention velocity */}
         <div className="mention-panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"12px 16px",marginBottom:12}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
-            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>LIVE MENTIONS — {selected}</div>
-            <button onClick={()=>fetchMentions(selected,true)} disabled={mentionLoading} style={{padding:"4px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#446688",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:mentionLoading?"not-allowed":"pointer",borderRadius:3}}>refresh</button>
+            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Mentions · {selected}</div>
+            <button onClick={()=>fetchMentions(selected,true)} disabled={mentionLoading} style={{padding:"4px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#446688",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:mentionLoading?"not-allowed":"pointer",borderRadius:3}}>Refresh</button>
           </div>
           <div className="mention-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
             {[
-              ["TOTAL",mentionData?.total],
-              ["REDDIT",mentionData?.source_counts?.reddit],
-              ["4CHAN",mentionData?.source_counts?.["4chan_biz"]],
+              ["Total",mentionData?.total],
+              ["Reddit",mentionData?.source_counts?.reddit],
+              ["4chan",mentionData?.source_counts?.["4chan_biz"]],
             ].map(([label,val])=>(
               <div key={label} style={{textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>{label}</div>
@@ -668,17 +694,17 @@ export default function Home() {
 
         {/* Metric cards */}
         <div className="metric-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
-          <NCard label="Z-SCORE" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"⚡ anomalous":"7d rolling"} accent={s1?.passed?"green":null}/>
-          <NCard label="MENTIONS/HR" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="4chan+reddit+tg"/>
+          <NCard label="Social z" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"elevated":"7d baseline"} accent={s1?.passed?"green":null}/>
+          <NCard label="Mentions/hr" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="social velocity"/>
           <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.candle_source==="unavailable"?"candles unavailable":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
           <NCard label="OBV" value={liveObv?(liveObv==="rising"?"↑ rising":liveObv==="falling"?"↓ falling":"→ flat"):"—"} sub={priceData?.technicals?.buy_ratio!==undefined?`${Math.round(priceData.technicals.buy_ratio*100)}% buy ratio`:"live flow"} accent={liveObv==="rising"?"green":null}/>
-          <NCard label="FIB SIGNAL" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/1d`:"multi timeframe"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
+          <NCard label="Fib" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/1d`:"multi-frame"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
         </div>
 
         {fibSignal&&<div className="fib-panel" style={{background:"#0a0f16",border:`1px solid ${(FIB_COLORS[fibSignal.signal]||"#0d2030")}33`,borderRadius:8,padding:"12px 16px",marginBottom:12}}>
           <div className="fib-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
             <div>
-              <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>FIBONACCI SIGNAL — MULTI TIMEFRAME</div>
+              <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Fibonacci · Multi-frame</div>
               <div style={{fontSize:11,color:"#335566",marginTop:4}}>{fibSignal.summary}</div>
             </div>
             <div className="fib-signal" style={{fontSize:18,fontWeight:700,color:FIB_COLORS[fibSignal.signal]||"#99bbcc",fontFamily:"'Share Tech Mono',monospace",textShadow:`0 0 10px ${(FIB_COLORS[fibSignal.signal]||"#99bbcc")}55`}}>{fibSignal.signal} · {fibSignal.confidence}%</div>
@@ -699,10 +725,10 @@ export default function Home() {
 
         {/* Step cards */}
         <div className="step-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
-          <SCard num={1} title="social momentum" step={s1} loading={loading&&!s1}/>
-          <SCard num={2} title="technical confluence" step={s2} loading={loading&&s1&&!s2}/>
-          <SCard num={3} title="longs vs shorts" step={s3} loading={loading&&s2&&!s3}/>
-          <SCard num={4} title="signal generation" step={s4} loading={loading&&s3&&!s4}/>
+          <SCard num={1} title="social pulse" step={s1} loading={loading&&!s1}/>
+          <SCard num={2} title="technicals" step={s2} loading={loading&&s1&&!s2}/>
+          <SCard num={3} title="positioning" step={s3} loading={loading&&s2&&!s3}/>
+          <SCard num={4} title="decision" step={s4} loading={loading&&s3&&!s4}/>
         </div>
 
         <LongShortPanel
@@ -714,24 +740,24 @@ export default function Home() {
         {/* Signal box */}
         <div className="signal-box" style={{background:"#0a0f16",border:`1px solid ${s4?.passed?"#00ff8833":"#0d2030"}`,borderRadius:8,padding:"16px 20px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14,boxShadow:s4?.passed?"0 0 20px #00ff8811":"none"}}>
           <div className="signal-copy">
-            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>CURRENT SIGNAL</div>
+            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>Signal</div>
             <div className="signal-title" style={{fontSize:22,fontWeight:700,color:SIGNAL_COLORS[s4?.signal]||"#334455",textShadow:s4?.passed?"0 0 15px #00ff8866":"none"}}>{s4?.signal?.replace(/_/g," ")||"—"}</div>
-            <div style={{fontSize:11,color:"#335566",marginTop:4,maxWidth:460}}>{s4?.reason||"select ticker and run pipeline"}</div>
+            <div style={{fontSize:11,color:"#335566",marginTop:4,maxWidth:460}}>{s4?.reason||"Choose a token and run a scan."}</div>
           </div>
           <div className="signal-confidence" style={{textAlign:"right"}}>
-            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>CONFIDENCE</div>
+            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>Confidence</div>
             <div style={{fontSize:22,fontWeight:700,color:"#00ff88"}}>{s4?`${s4.confidence}%`:"—"}</div>
             <div style={{height:3,background:"#0d2030",borderRadius:2,marginTop:6,width:120}}>
               <div style={{height:"100%",width:`${s4?.confidence||0}%`,background:"linear-gradient(90deg,#00ff88,#00cfff)",borderRadius:2,transition:"width .5s ease",boxShadow:"0 0 6px #00ff8866"}}/>
             </div>
           </div>
           <button className="run-btn" onClick={runPipeline} disabled={loading} style={{padding:"10px 24px",background:"transparent",border:"1px solid #00ff88",borderRadius:4,color:"#00ff88",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:loading?"not-allowed":"pointer",opacity:loading?.5:1,boxShadow:"0 0 10px #00ff8833",letterSpacing:".08em"}}>
-            {loading?"SCANNING...":"RUN PIPELINE ↗"}
+            {loading?"Scanning...":"Run scan"}
           </button>
         </div>
 
         <div className="log-panel" style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:8,padding:"10px 14px"}}>
-          <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:6}}>EXECUTION LOG</div>
+          <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:6}}>Activity</div>
           <div ref={logRef} style={{fontFamily:"'Share Tech Mono',monospace",fontSize:11,lineHeight:1.9,maxHeight:110,overflowY:"auto"}}>
             {log.map((l,i)=><div key={i} style={{color:l.includes("PASS")||l.includes("signal:")?"#00ff88":l.includes("FAIL")||l.includes("error")?"#ff4466":"#335566"}}>{l}</div>)}
           </div>
@@ -740,12 +766,12 @@ export default function Home() {
 
       {/* ── DISCOVER ── */}
       {tab==="discover"&&<div>
-        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:14}}>NEW & TRENDING TOKENS — live DEXScreener boosts</div>
+        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em",marginBottom:14}}>Trending tokens</div>
         <div className="discover-table">
           <div className="discover-grid" style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"6px 12px",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0d2030",marginBottom:4}}>
-            {["TOKEN","CHAIN","AGE","LIQUIDITY","VOL 1H","MENTIONS","SOCIAL","1H"].map(h=><span key={h}>{h}</span>)}
+            {["Token","Chain","Age","Liquidity","Vol 1h","Mentions","Social","1h"].map(h=><span key={h}>{h}</span>)}
           </div>
-          {newTokens.length===0&&<div style={{padding:"12px",fontSize:11,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0a1520"}}>live discover data unavailable</div>}
+          {newTokens.length===0&&<div style={{padding:"12px",fontSize:11,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0a1520"}}>Trending data unavailable.</div>}
           {newTokens.map((t,i)=>(
             <div className="discover-grid" key={i} style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"10px 12px",fontSize:12,borderBottom:"1px solid #0a1520",borderRadius:4,marginBottom:2,cursor:"pointer",background:t.zscore>3.5?"#00ff880a":"transparent",transition:"background .15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="#0d1f2e"}
@@ -762,20 +788,20 @@ export default function Home() {
           ))}
         </div>
         <div style={{fontSize:10,color:"#223344",fontFamily:"'Share Tech Mono',monospace",marginTop:14,padding:"10px 12px",background:"#070a0f",borderRadius:4,border:"1px solid #0d2030"}}>
-          ⚠ new tokens carry extreme risk. low liquidity = high manipulation probability. always verify contract on etherscan/solscan.
+          New tokens are high risk. Verify liquidity and contract details before acting.
         </div>
       </div>}
 
       {/* ── LOOKUP ── */}
       {tab==="lookup"&&<div>
-        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:14}}>TOKEN LOOKUP — identify any token by ticker</div>
+        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em",marginBottom:14}}>Token lookup</div>
         <div className="lookup-form" style={{display:"flex",gap:8,marginBottom:16}}>
-          <input value={lookupQuery} onChange={e=>setLookupQuery(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&runLookup()} placeholder="enter ticker e.g. PEPE"
+          <input value={lookupQuery} onChange={e=>setLookupQuery(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&runLookup()} placeholder="Ticker, e.g. PEPE"
             className="lookup-input"
             style={{flex:1,padding:"10px 14px",background:"#0a0f16",border:"1px solid #1a2a3a",borderRadius:4,color:"#c8d8e8",fontFamily:"'Share Tech Mono',monospace",fontSize:13}}
             onFocus={e=>e.target.style.borderColor="#00ff8866"} onBlur={e=>e.target.style.borderColor="#1a2a3a"}/>
           <button className="lookup-btn" onClick={runLookup} disabled={lookupLoading} style={{padding:"10px 20px",background:"transparent",border:"1px solid #00cfff",borderRadius:4,color:"#00cfff",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:lookupLoading?"not-allowed":"pointer",opacity:lookupLoading?.5:1,boxShadow:"0 0 8px #00cfff22"}}>
-            {lookupLoading?"SCANNING...":"IDENTIFY ↗"}
+            {lookupLoading?"Scanning...":"Search"}
           </button>
         </div>
         {lookupResult&&<div className="lookup-card" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:16}}>
@@ -789,7 +815,7 @@ export default function Home() {
             </div>
           </div>
           {lookupResult.price&&<div className="lookup-stats" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-            {[["VOL 24H",fmtNum(lookupResult.price.volume_24h)],["LIQUIDITY",fmtNum(lookupResult.price.liquidity_usd)],["MKT CAP",fmtNum(lookupResult.price.market_cap)],["FIB",`${lookupResult.price.fib_signal?.signal||"—"} ${lookupResult.price.fib_signal?.confidence||0}%`]].map(([l,v])=>(
+            {[["Vol 24h",fmtNum(lookupResult.price.volume_24h)],["Liquidity",fmtNum(lookupResult.price.liquidity_usd)],["Market cap",fmtNum(lookupResult.price.market_cap)],["Fib",`${lookupResult.price.fib_signal?.signal||"—"} ${lookupResult.price.fib_signal?.confidence||0}%`]].map(([l,v])=>(
               <div key={l} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px"}}>
                 <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:2}}>{l}</div>
                 <div style={{fontSize:14,fontWeight:600,color:"#99bbcc"}}>{v}</div>
@@ -797,9 +823,9 @@ export default function Home() {
             ))}
           </div>}
           <div className="lookup-mentions" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
-            {[["TOTAL",lookupResult.mentions?.total],["REDDIT",lookupResult.mentions?.source_counts?.reddit],["4CHAN",lookupResult.mentions?.source_counts?.["4chan_biz"]]].map(([label,val])=>(
+            {[["Total",lookupResult.mentions?.total],["Reddit",lookupResult.mentions?.source_counts?.reddit],["4chan",lookupResult.mentions?.source_counts?.["4chan_biz"]]].map(([label,val])=>(
               <div key={label} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
-                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>MENTIONS {label}</div>
+                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>Mentions · {label}</div>
                 <div style={{fontSize:20,fontWeight:700,color:val>10?"#00ff88":val>0?"#00cfff":"#446688"}}>{val===undefined?"—":val}</div>
               </div>
             ))}
@@ -807,7 +833,7 @@ export default function Home() {
           <div className="lookup-steps" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
             {lookupResult.steps?.map((s,i)=>(
               <div key={i} style={{background:"#070a0f",border:`1px solid ${s.passed?"#00ff8833":"#1a2a3a"}`,borderRadius:6,padding:10}}>
-                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>STEP {s.step}</div>
+                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>Step {s.step}</div>
                 <div style={{fontSize:10,color:"#99bbcc",marginBottom:6}}>{s.name?.replace(/_/g," ")}</div>
                 <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontFamily:"'Share Tech Mono',monospace",background:s.passed?"#00ff8811":"#ff446611",color:s.passed?"#00ff88":"#ff4466"}}>{s.passed?"pass ✓":"fail ✗"}</span>
               </div>
@@ -818,7 +844,7 @@ export default function Home() {
       </div>}
 
       <div style={{marginTop:20,paddingTop:12,borderTop:"1px solid #0a1520",fontSize:10,color:"#1a2a3a",textAlign:"center",fontFamily:"'Share Tech Mono',monospace"}}>
-        BLACKCAT is for research purposes only — not financial advice — crypto trading involves substantial risk
+        Research only. Not financial advice.
       </div>
     </div>
   </>);

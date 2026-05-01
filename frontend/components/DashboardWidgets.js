@@ -15,7 +15,7 @@ export function SCard({ num, title, step, loading }) {
   const vc = { pass: "#00ff88", fail: "#ff4466", active: "#00cfff", idle: "#335566" }[status];
   return (
     <div className="step-card" style={{ background: "#0a0f16", border: `1px solid ${bc}`, borderRadius: 8, padding: 12 }}>
-      <div style={{ fontSize: 10, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 4 }}>STEP {num}</div>
+      <div style={{ fontSize: 10, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 4 }}>Step {num}</div>
       <div style={{ fontSize: 11, color: "#446688", marginBottom: 8 }}>{title}</div>
       {loading && <div style={{ fontSize: 11, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace" }}>scanning...</div>}
       {step && (
@@ -46,24 +46,24 @@ export function LongShortPanel({ data, loading, onRefresh }) {
     <div className="longshort-panel" style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 10, color: "#336688", fontFamily: "'Share Tech Mono',monospace", letterSpacing: ".1em" }}>LONGS VS SHORTS - FUTURES SENTIMENT</div>
-          {loading && <div style={{ fontSize: 9, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace", marginTop: 3 }}>loading derivatives data...</div>}
+          <div style={{ fontSize: 10, color: "#336688", fontFamily: "'Share Tech Mono',monospace", letterSpacing: ".08em" }}>Futures sentiment</div>
+          {loading && <div style={{ fontSize: 9, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace", marginTop: 3 }}>Loading derivatives...</div>}
         </div>
-        {onRefresh && <button onClick={onRefresh} disabled={loading} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #1a2a3a", color: "#446688", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, cursor: loading ? "not-allowed" : "pointer", borderRadius: 3 }}>refresh</button>}
+        {onRefresh && <button onClick={onRefresh} disabled={loading} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #1a2a3a", color: "#446688", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, cursor: loading ? "not-allowed" : "pointer", borderRadius: 3 }}>Refresh</button>}
       </div>
       {!loading && !data?.available && (
         <div style={{ padding: "10px 0", color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontSize: 10 }}>
-          {data?.reason || "long/short data unavailable for this ticker"}
+          {data?.reason || "Futures data unavailable."}
         </div>
       )}
       {data?.available && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
             {[
-              ["SIGNAL", data.signal, signalColor],
-              ["LONGS", formatPct(data.account_long_pct), "#00ff88"],
-              ["SHORTS", formatPct(data.account_short_pct), "#ff4466"],
-              ["FUNDING", `${formatFundingRate(data.funding_rate_pct)}`, fundingColor(data.funding_rate_pct)],
+              ["Signal", data.signal, signalColor],
+              ["Longs", formatPct(data.account_long_pct), "#00ff88"],
+              ["Shorts", formatPct(data.account_short_pct), "#ff4466"],
+              ["Funding", `${formatFundingRate(data.funding_rate_pct)}`, fundingColor(data.funding_rate_pct)],
             ].map(([label, value, color]) => (
               <div key={label} style={{ background: "#070a0f", border: "1px solid #0d2030", borderRadius: 6, padding: "8px 10px" }}>
                 <div style={{ fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 3 }}>{label}</div>
