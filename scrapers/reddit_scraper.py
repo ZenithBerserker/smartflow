@@ -103,26 +103,20 @@ def scan_reddit():
 
 
 def save_counts(counts):
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS mentions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticker TEXT NOT NULL,
-            source TEXT NOT NULL,
-            count INTEGER NOT NULL,
-            timestamp INTEGER NOT NULL
-        )
-    """)
+    from supabase import create_client
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
     ts = int(time.time())
-    for ticker, count in counts.items():
-        c.execute(
-            "INSERT INTO mentions (ticker, source, count, timestamp) VALUES (?, ?, ?, ?)",
-            (ticker, "reddit", count, ts)
-        )
-    conn.commit()
-    conn.close()
+    rows = [
+        {"ticker": ticker, "source": "reddit", "count": count, "timestamp": ts}
+        for ticker, count in counts.items()
+    ]
+    if rows:
+        client.table("mentions").insert(rows).execute()
+        print(f"[Supabase] Saved {len(rows)} ticker counts")
 
 
 def run():

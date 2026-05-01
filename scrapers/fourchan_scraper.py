@@ -142,16 +142,20 @@ def scan_board():
 
 
 def save_counts(counts):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+    from supabase import create_client
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
     ts = int(time.time())
-    for ticker, count in counts.items():
-        c.execute(
-            "INSERT INTO mentions (ticker, source, count, timestamp) VALUES (?, ?, ?, ?)",
-            (ticker, "4chan", count, ts)
-        )
-    conn.commit()
-    conn.close()
+    rows = [
+        {"ticker": ticker, "source": "4chan", "count": count, "timestamp": ts}
+        for ticker, count in counts.items()
+    ]
+    if rows:
+        client.table("mentions").insert(rows).execute()
+        print(f"[Supabase] Saved {len(rows)} ticker counts")
 
 
 def compute_zscore(ticker, current_count):
