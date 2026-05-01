@@ -68,11 +68,11 @@ function buildMacd(candles) {
   return line.map((v,i)=>Number.isFinite(v)&&Number.isFinite(signal[i])?{line:v,signal:signal[i],hist:v-signal[i]}:null);
 }
 
-function buildChartStudies(candles) {
+function buildChartStudies(candles, showSignals=false) {
   const nw=buildNadaraya(candles);
   const zones=buildZones(candles);
   const macd=buildMacd(candles);
-  const markers=candles.map((c,i)=>{
+  const markers=showSignals?candles.map((c,i)=>{
     const n=nw[i], z=zones[i], m=macd[i];
     if(!n||!z||!m) return null;
     const nwBull=c.c>=n.mid&&n.mid>=(nw[i-1]?.mid??n.mid);
@@ -84,7 +84,7 @@ function buildChartStudies(candles) {
     if(nwBull&&zoneBull&&macdBull) return {type:"buy",price:c.l,index:i};
     if(nwBear&&zoneBear&&macdBear) return {type:"sell",price:c.h,index:i};
     return null;
-  });
+  }):[];
   return {nw,zones,macd,markers};
 }
 
@@ -227,9 +227,8 @@ export default function Home() {
     const visibleCount=Math.max(12,Math.ceil(allCandles.length/chartZoom));
     const offset=Math.max(0,allCandles.length-visibleCount);
     const candles=allCandles.slice(offset);
-    const studies=buildChartStudies(candles);
-    const macdHeight=Math.min(82,Math.max(58,H*0.22));
-    const pad={top:18,right:68,bottom:28+macdHeight,left:8};
+    const studies=buildChartStudies(candles,chartTf==="4h"||chartTf==="24h");
+    const pad={top:18,right:68,bottom:28,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
 
     const indicatorPrices=[
@@ -325,30 +324,6 @@ export default function Home() {
       ctx.shadowBlur=0;
     });
 
-    if(macdHeight>0){
-      const panelTop=H-macdHeight+8;
-      const panelBottom=H-24;
-      const macdValues=studies.macd.flatMap(m=>m?[m.line,m.signal,m.hist]:[]).filter(Number.isFinite);
-      const maxAbs=Math.max(...macdValues.map(v=>Math.abs(v)),1e-12);
-      const macdY=v=>panelTop+((maxAbs-v)/(maxAbs*2))*(panelBottom-panelTop);
-      ctx.fillStyle="rgba(7,10,15,.78)";
-      ctx.fillRect(pad.left,panelTop-8,W-pad.right-pad.left,panelBottom-panelTop+14);
-      ctx.strokeStyle="#0d2030";
-      ctx.beginPath(); ctx.moveTo(pad.left,macdY(0)); ctx.lineTo(W-pad.right,macdY(0)); ctx.stroke();
-      studies.macd.forEach((m,i)=>{
-        if(!m) return;
-        const x=toX(i), barW=Math.max(1,candleW*.8);
-        ctx.fillStyle=m.hist>=0?"#00ff8866":"#ff446666";
-        ctx.fillRect(x-barW/2,macdY(Math.max(0,m.hist)),barW,Math.max(1,Math.abs(macdY(m.hist)-macdY(0))));
-      });
-      drawSeries(studies.macd.map(m=>m?.line),macdY,"#00cfff",1.2);
-      drawSeries(studies.macd.map(m=>m?.signal),macdY,"#ffaa00",1.2);
-      ctx.fillStyle="#335566";
-      ctx.font="9px 'Share Tech Mono',monospace";
-      ctx.textAlign="left";
-      ctx.fillText("MACD",pad.left+4,panelTop+4);
-    }
-
     // Hover crosshair and tooltip
     const hover=chartHoverRef.current;
     if(hover&&hover.index>=0&&hover.index<candles.length){
@@ -392,7 +367,7 @@ export default function Home() {
     for(let i=0;i<candles.length;i+=step){
       const x=toX(i);
       const d=new Date(candles[i].t);
-      ctx.fillText(`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`,x,H-macdHeight-8);
+      ctx.fillText(`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`,x,H-8);
     }
     };
 
