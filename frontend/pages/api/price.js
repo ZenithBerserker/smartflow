@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
   // Timeframe → DEXScreener resolution mapping
   const tfMap = { "1h": { res: "5m", limit: 12 }, "4h": { res: "15m", limit: 16 }, "24h": { res: "30m", limit: 48 } };
-  const { res: resolution, limit } = tfMap[tf] || tfMap["24h"];
+  const { limit } = tfMap[tf] || tfMap["24h"];
 
   try {
     if (["DOGE", "TIA"].includes(ticker) && COINGECKO_IDS[ticker]) {

@@ -192,21 +192,34 @@ Run the scraper you need in a terminal, for example `python3 scrapers/fourchan_s
 ```
 smartflow/
 ├── scrapers/
-│   ├── fourchan.py        # 4chan /biz/ scraper
-│   ├── reddit.py          # Reddit scraper  
-│   ├── telegram.py        # Telegram scraper
-│   ├── dexscreener.py     # On-chain data fetcher
-│   ├── zscore.py          # Z-score calculator
-├── api/
-│   └── analyze_wallet.py  # Gemini wallet analyzer
+│   ├── fourchan_scraper.py   # 4chan /biz/ scraper, saves SQLite + Supabase
+│   ├── reddit_scraper.py     # Reddit scraper, saves SQLite + Supabase
+│   ├── telegram_scraper.py   # Telegram live scraper, saves SQLite
+│   ├── fourchan.py           # JSON-storage scraper variant
+│   ├── reddit.py             # JSON-storage scraper variant
+│   ├── telegram.py           # JSON-storage scraper variant
+│   ├── dexscreener.py        # Python on-chain helper
+│   └── zscore.py             # Python JSON-storage Z-score calculator
+├── api/                      # Standalone Python CLI pipeline/helpers
+│   ├── pipeline.py
+│   ├── dexscreener.py
+│   ├── gemini_analyzer.py
+│   └── analyze_wallet.py
 ├── lib/
-│   └── storage.py         # Simple JSON file storage
-├── frontend/              # Next.js frontend
-│   ├── pages/
-│   │   ├── index.js       # Dashboard
-│   │   └── api/           # Serverless API routes
+│   └── storage.py            # Simple JSON file storage
+├── frontend/                 # Active Vercel/Next.js app
 │   ├── components/
+│   │   └── DashboardWidgets.js
+│   ├── lib/
+│   │   ├── format.js
+│   │   └── server/zscores.js # Shared Supabase/mock Z-score source
+│   ├── pages/
+│   │   ├── index.js          # Dashboard
+│   │   └── api/              # Serverless API routes
 │   └── package.json
 ├── requirements.txt
+├── vercel.json
 └── README.md
 ```
+
+The live web app uses `frontend/pages/api/*`. The root `api/*.py` files are standalone Python helpers for local CLI workflows and are not deployed by the Vercel Next.js build.

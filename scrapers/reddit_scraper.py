@@ -103,12 +103,20 @@ def scan_reddit():
 
 
 def save_counts(counts):
-    from supabase import create_client
-    import os
+    save_counts_sqlite(counts)
+
     from dotenv import load_dotenv
     load_dotenv()
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    if not supabase_url or not supabase_key:
+        print("[Supabase] SUPABASE_URL or SUPABASE_KEY not set; saved locally only")
+        return
+
+    from supabase import create_client
     
-    client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+    client = create_client(supabase_url, supabase_key)
     ts = int(time.time())
     rows = [
         {"ticker": ticker, "source": "reddit", "count": count, "timestamp": ts}
@@ -117,6 +125,31 @@ def save_counts(counts):
     if rows:
         client.table("mentions").insert(rows).execute()
         print(f"[Supabase] Saved {len(rows)} ticker counts")
+
+
+def save_counts_sqlite(counts):
+    if not counts:
+        return
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS mentions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            source TEXT NOT NULL,
+            count INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL
+        )
+    """)
+    ts = int(time.time())
+    c.executemany(
+        "INSERT INTO mentions (ticker, source, count, timestamp) VALUES (?, ?, ?, ?)",
+        [(ticker, "reddit", count, ts) for ticker, count in counts.items()]
+    )
+    conn.commit()
+    conn.close()
+    print(f"[SQLite] Saved {len(counts)} ticker counts")
 
 
 def run():

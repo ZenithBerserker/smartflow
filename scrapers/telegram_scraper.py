@@ -74,7 +74,7 @@ def extract_tickers(text):
     return list(found)
 
 
-def save_mentions(counts):
+def save_mentions(counts, source="telegram"):
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -91,10 +91,11 @@ def save_mentions(counts):
     for ticker, count in counts.items():
         c.execute(
             "INSERT INTO mentions (ticker, source, count, timestamp) VALUES (?, ?, ?, ?)",
-            (ticker, "telegram", count, ts)
+            (ticker, source, count, ts)
         )
     conn.commit()
     conn.close()
+    print(f"[SQLite] Saved {len(counts)} ticker counts")
 
 
 async def run():

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Head from "next/head";
+import { ChainBadge, NCard, SCard, WalletTable } from "../components/DashboardWidgets";
+import { fmtNum, fmtPrice } from "../lib/format";
 
 const TICKERS = ["PEPE","WIF","BONK","TURBO","FLOKI","DOGE","SOL","ARB","LINK","INJ","SHIB","TIA"];
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
@@ -18,27 +20,6 @@ function getMockMentionChanges(ticker) {
   const s = ticker.charCodeAt(0)*7+(ticker.charCodeAt(1)||3)*13;
   const r=(min,max,x)=>Math.round(min+((s*x*9301+49297)%233280)/233280*(max-min));
   return {"4h":r(-30,280,1),"24h":r(-20,180,2),"7d":r(-10,120,3)};
-}
-
-function fmtPrice(p) {
-  if (!p || isNaN(p)) return "—";
-  if (p >= 1000) return "$"+p.toLocaleString("en-US",{maximumFractionDigits:2});
-  if (p >= 1) return "$"+p.toFixed(4);
-  if (p >= 0.0001) return "$"+p.toFixed(6);
-  return "$"+p.toExponential(3);
-}
-
-function fmtNum(n) {
-  if (!n || isNaN(n)) return "—";
-  if (n >= 1e9) return "$"+(n/1e9).toFixed(2)+"B";
-  if (n >= 1e6) return "$"+(n/1e6).toFixed(2)+"M";
-  if (n >= 1e3) return "$"+(n/1e3).toFixed(1)+"K";
-  return "$"+n.toFixed(2);
-}
-
-function fmtWalletAddress(addr) {
-  if (!addr || addr.length < 14) return addr || "—";
-  return `${addr.slice(0,6)}...${addr.slice(-4)}`;
 }
 
 export default function Home() {
@@ -60,7 +41,6 @@ export default function Home() {
   const [chartTf,setChartTf]=useState("24h");
   const logRef=useRef(null);
   const chartRef=useRef(null);
-  const chartInst=useRef(null);
 
   const addLog=useCallback((msg)=>{
     const ts=new Date().toLocaleTimeString("en-US",{hour12:false});
@@ -473,85 +453,4 @@ export default function Home() {
       </div>
     </div>
   </>);
-}
-
-function NCard({label,value,sub,accent}){
-  const c=accent==="green"?"#00ff88":accent==="cyan"?"#00cfff":accent==="amber"?"#ffaa00":null;
-  return(<div style={{background:"#0a0f16",border:`1px solid ${c?c+"33":"#0d2030"}`,borderRadius:8,padding:"10px 12px",boxShadow:c?`0 0 12px ${c}11`:"none"}}>
-    <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4,letterSpacing:".08em"}}>{label}</div>
-    <div style={{fontSize:20,fontWeight:700,color:c||"#99bbcc",textShadow:c?`0 0 8px ${c}66`:"none"}}>{value}</div>
-    <div style={{fontSize:10,color:"#335566",marginTop:2}}>{sub}</div>
-  </div>);
-}
-
-function SCard({num,title,step,loading}){
-  const status=!step?(loading?"active":"idle"):step.passed?"pass":"fail";
-  const bc={pass:"#00ff8844",fail:"#ff446633",active:"#00cfff44",idle:"#0d2030"}[status];
-  const vc={pass:"#00ff88",fail:"#ff4466",active:"#00cfff",idle:"#335566"}[status];
-  return(<div style={{background:"#0a0f16",border:`1px solid ${bc}`,borderRadius:8,padding:12}}>
-    <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>STEP {num}</div>
-    <div style={{fontSize:11,color:"#446688",marginBottom:8}}>{title}</div>
-    {loading&&<div style={{fontSize:11,color:"#00cfff",fontFamily:"'Share Tech Mono',monospace"}}>scanning...</div>}
-    {step&&<>
-      <div style={{fontSize:17,fontWeight:700,color:vc,textShadow:`0 0 8px ${vc}66`}}>
-        {num===1&&`Z = ${step.zscore}`}{num===2&&`RSI ${step.rsi?.toFixed(0)}`}
-        {num===3&&`${step.smart_money_count}/${step.wallets_analyzed}`}{num===4&&(step.signal?.replace(/_/g," ")||"—")}
-      </div>
-      <div style={{fontSize:10,color:"#335566",marginTop:2}}>
-        {num===1&&`${step.mentions_1h} mentions/hr`}{num===2&&`OBV ${step.obv_signal}`}
-        {num===3&&`${Math.round(step.smart_money_ratio*100)}% smart money`}{num===4&&`${step.confidence}% confidence`}
-      </div>
-      <span style={{display:"inline-block",marginTop:6,fontSize:10,padding:"2px 8px",borderRadius:10,fontFamily:"'Share Tech Mono',monospace",background:step.passed?"#00ff8811":"#ff446611",color:step.passed?"#00ff88":"#ff4466"}}>{step.passed?"pass ✓":"fail ✗"}</span>
-    </>}
-  </div>);
-}
-
-function getMockWallets(){
-  return [
-    {wallet_address:"0x3aF7...b291",win_rate_percentage:78,total_realized_pnl_usd:842000,total_trades:234,risk_classification:"Moderate",is_smart_money:true},
-    {wallet_address:"0x1c9E...d047",win_rate_percentage:71,total_realized_pnl_usd:1240000,total_trades:189,risk_classification:"Aggressive",is_smart_money:true},
-    {wallet_address:"4xKmP...qR2s",win_rate_percentage:64,total_realized_pnl_usd:390000,total_trades:412,risk_classification:"Degenerate",is_smart_money:false},
-    {wallet_address:"0x82bD...f3A1",win_rate_percentage:69,total_realized_pnl_usd:670000,total_trades:301,risk_classification:"Moderate",is_smart_money:true},
-    {wallet_address:"9wLqT...mN5j",win_rate_percentage:55,total_realized_pnl_usd:88000,total_trades:567,risk_classification:"Aggressive",is_smart_money:false},
-    {wallet_address:"0xE4c2...7e9F",win_rate_percentage:82,total_realized_pnl_usd:2100000,total_trades:98,risk_classification:"Conservative",is_smart_money:true},
-  ];
-}
-
-function WalletTable({wallets,source,reason,loading,onRefresh}){
-  const data=wallets&&wallets.length>0?wallets:getMockWallets();
-  const isMock=!source||source==="mock";
-  return(<div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"12px 14px",marginBottom:12}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
-      <div>
-        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>TOP TRADER WALLETS — AI VALIDATED</div>
-        <div style={{fontSize:9,color:isMock?"#ffaa00":"#00ff88",fontFamily:"'Share Tech Mono',monospace",marginTop:3}}>
-          {loading?"loading wallets...":`source: ${source||"mock"}${reason?` — ${reason}`:""}`}
-        </div>
-      </div>
-      {onRefresh&&<button onClick={onRefresh} disabled={loading} style={{padding:"4px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#446688",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:loading?"not-allowed":"pointer",borderRadius:3}}>↻</button>}
-    </div>
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-        <thead><tr style={{borderBottom:"1px solid #0d2030"}}>
-          {["WALLET","VOLUME","BUYS/SELLS","WIN EST.","TRADES","VERDICT"].map(h=><th key={h} style={{padding:"4px 8px",textAlign:"left",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontWeight:400}}>{h}</th>)}
-        </tr></thead>
-        <tbody>{data.map((w,i)=>(
-          <tr key={i} style={{borderBottom:"1px solid #0a1520"}}>
-            <td style={{padding:"8px",fontFamily:"'Share Tech Mono',monospace",fontSize:10,color:"#335566"}} title={w.wallet_address}>{fmtWalletAddress(w.wallet_address)}</td>
-            <td style={{padding:"8px",color:w.is_smart_money?"#00ff88":"#99bbcc",fontWeight:w.is_smart_money?700:400}}>{fmtNum(w.volume_usd||w.total_realized_pnl_usd||0)}</td>
-            <td style={{padding:"8px",color:"#446688"}}>{w.buy_count!==undefined||w.sell_count!==undefined?`${w.buy_count||0}/${w.sell_count||0}`:"—"}</td>
-            <td style={{padding:"8px",color:w.is_smart_money?"#00ff88":"#446688"}}>{w.win_rate_percentage!==undefined?`${w.win_rate_percentage}%`:"—"}</td>
-            <td style={{padding:"8px",color:"#446688"}}>{w.total_trades}</td>
-            <td style={{padding:"8px"}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontFamily:"'Share Tech Mono',monospace",background:w.is_smart_money?"#00ff8811":"#1a2a3a",color:w.is_smart_money?"#00ff88":"#446688",border:`1px solid ${w.is_smart_money?"#00ff8833":"#1a2a3a"}`}}>{w.is_smart_money?"smart money":"unverified"}</span></td>
-          </tr>
-        ))}</tbody>
-      </table>
-    </div>
-  </div>);
-}
-
-function ChainBadge({chain}){
-  const m={ETH:["#627eea22","#627eea"],SOL:["#9945ff22","#9945ff"],BASE:["#0052ff22","#0052ff"],BSC:["#f3ba2f22","#f3ba2f"]};
-  const [bg,col]=m[chain]||["#33445522","#446688"];
-  return(<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:bg,color:col,fontFamily:"'Share Tech Mono',monospace",border:`1px solid ${col}44`}}>{chain}</span>);
 }

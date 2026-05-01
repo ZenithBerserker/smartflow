@@ -1,24 +1,22 @@
 // pages/api/pipeline.js — updated to use real wallet analysis from /api/wallets
-
-function getMockZscore(ticker) {
-  const base = { PEPE:1.8, WIF:2.1, BONK:1.4, TURBO:3.1, FLOKI:1.6, DOGE:0.9, SHIB:1.1, SOL:2.3, ETH:0.7, ARB:1.9, LINK:1.2, INJ:2.6 };
-  const z = (base[ticker] || 1.0) + (Math.random() * 0.4 - 0.2);
-  return Math.round(z * 100) / 100;
-}
+import { getZscoreForTicker } from "../../lib/server/zscores";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const ticker = (req.query.ticker || "PEPE").toUpperCase();
 
   // ── Step 1: Social momentum ───────────────────────────────────────────────
-  const zscore = getMockZscore(ticker);
-  const mentions = Math.round(zscore * 45 + Math.random() * 30);
+  const social = await getZscoreForTicker(ticker);
+  const zscore = social.zscore;
+  const mentions = social.mentions_1h;
   const step1 = {
     step: 1, name: "social_momentum",
     zscore, mentions_1h: mentions,
     threshold: 2.0,
     passed: zscore > 2.0,
     sources: ["4chan_biz", "reddit", "telegram"],
+    source: social.source,
+    reason: social.reason,
   };
 
   if (!step1.passed) {
