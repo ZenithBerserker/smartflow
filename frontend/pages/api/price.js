@@ -5,20 +5,11 @@ import { getTokenMeta } from "../../lib/tokens";
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const ticker = (req.query.ticker || "PEPE").toUpperCase();
-  const tf = normalizeTimeframe(req.query.tf || "24h"); // 15m, 1h, 4h, 24h, 1w, 1m
+  const tf = normalizeTimeframe(req.query.tf || "1d"); // 15m, 1h, 4h, 1d, 1w, 1m
   const meta = getTokenMeta(ticker);
   const resolvedMeta = meta || await resolveCoinGeckoMeta(ticker);
 
-  // Timeframe → DEXScreener resolution mapping
-  const tfMap = {
-    "15m": { limit: 15 },
-    "1h": { limit: 60 },
-    "4h": { limit: 48 },
-    "24h": { limit: 96 },
-    "1w": { limit: 84 },
-    "1m": { limit: 90 },
-  };
-  const { limit } = tfMap[tf] || tfMap["24h"];
+  const { limit } = getCandleConfig(tf);
 
   try {
     const cgQuote = resolvedMeta?.coingeckoId ? await getCoinGeckoQuote(resolvedMeta.coingeckoId) : null;
@@ -273,7 +264,7 @@ function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal) {
 
 async function getCoinGeckoCandles(id, tf) {
   try {
-    const days = tf === "1m" ? 30 : tf === "1w" ? 7 : 1;
+    const { days } = getCandleConfig(tf);
     const chartUrl = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`;
     const chartRes = await fetch(chartUrl, {
       headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
@@ -288,29 +279,35 @@ async function getCoinGeckoCandles(id, tf) {
 }
 
 function buildCandlesFromCoinGecko(prices, volumes, tf) {
-  const target = tf === "15m" ? 15 : tf === "1h" ? 60 : tf === "4h" ? 48 : tf === "1w" ? 84 : tf === "1m" ? 90 : 96;
+  const { limit, bucketMs } = getCandleConfig(tf);
   if (!prices.length) return [];
-  const recent = prices.slice(-Math.max(target * 2, target));
-  const step = Math.max(1, Math.floor(recent.length / target));
+  const buckets = new Map();
+
+  prices.forEach((point, index) => {
+    const t = Number(point?.[0]);
+    const price = Number(point?.[1]);
+    if (!Number.isFinite(t) || !Number.isFinite(price)) return;
+    const key = Math.floor(t / bucketMs) * bucketMs;
+    const volume = Number(volumes[index]?.[1] || 0);
+    const bucket = buckets.get(key);
+    if (!bucket) {
+      buckets.set(key, { t: key, o: price, h: price, l: price, c: price, v: volume, samples: 1 });
+      return;
+    }
+    bucket.h = Math.max(bucket.h, price);
+    bucket.l = Math.min(bucket.l, price);
+    bucket.c = price;
+    bucket.v += volume;
+    bucket.samples += 1;
+  });
+
   const candles = [];
 
-  for (let i = 0; i < recent.length; i += step) {
-    const chunk = recent.slice(i, i + step);
-    if (!chunk.length) continue;
-    const closeValues = chunk.map(p => Number(p[1])).filter(Number.isFinite);
-    if (!closeValues.length) continue;
-    const volChunk = volumes.slice(Math.max(0, prices.length - recent.length + i), Math.max(0, prices.length - recent.length + i + step));
-    candles.push({
-      t: Number(chunk[chunk.length - 1][0]),
-      o: closeValues[0],
-      h: Math.max(...closeValues),
-      l: Math.min(...closeValues),
-      c: closeValues[closeValues.length - 1],
-      v: volChunk.reduce((sum, v) => sum + Number(v?.[1] || 0), 0) / Math.max(1, volChunk.length),
-    });
-  }
+  [...buckets.values()]
+    .sort((a, b) => a.t - b.t)
+    .forEach((bucket) => candles.push({ ...bucket, v: bucket.v / Math.max(1, bucket.samples) }));
 
-  return candles.slice(-target);
+  return candles.slice(-limit);
 }
 
 function calculateTechnicals(candles, pairData) {
@@ -336,16 +333,32 @@ function calculateTechnicals(candles, pairData) {
 }
 
 function getGeckoTimeframe(tf) {
-  if (tf === "15m") return { timeframe: "minute", aggregate: 1 };
-  if (tf === "1h") return { timeframe: "minute", aggregate: 1 };
-  if (tf === "4h") return { timeframe: "minute", aggregate: 5 };
-  if (tf === "1w") return { timeframe: "hour", aggregate: 2 };
-  if (tf === "1m") return { timeframe: "hour", aggregate: 8 };
-  return { timeframe: "minute", aggregate: 15 };
+  if (tf === "15m") return { timeframe: "minute", aggregate: 15 };
+  if (tf === "1h") return { timeframe: "hour", aggregate: 1 };
+  if (tf === "4h") return { timeframe: "hour", aggregate: 4 };
+  if (tf === "1w") return { timeframe: "day", aggregate: 7 };
+  if (tf === "1m") return { timeframe: "day", aggregate: 30 };
+  return { timeframe: "day", aggregate: 1 };
+}
+
+function getCandleConfig(tf) {
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const map = {
+    "15m": { limit: 96, days: 1, bucketMs: 15 * minute },
+    "1h": { limit: 96, days: 7, bucketMs: hour },
+    "4h": { limit: 90, days: 30, bucketMs: 4 * hour },
+    "1d": { limit: 90, days: 180, bucketMs: day },
+    "1w": { limit: 52, days: 730, bucketMs: 7 * day },
+    "1m": { limit: 36, days: "max", bucketMs: 30 * day },
+  };
+  return map[tf] || map["1d"];
 }
 
 function normalizeTimeframe(tf) {
   if (tf === "7d") return "1w";
+  if (tf === "24h") return "1d";
   if (tf === "30d") return "1m";
   return tf;
 }
@@ -411,7 +424,7 @@ function calculateOBV(candles) {
 }
 
 async function buildFibonacciSignal(ticker, currentPrice, opts = {}) {
-  const timeframes = ["1h", "4h", "24h"];
+  const timeframes = ["1h", "4h", "1d"];
   const candlesByTf = {};
 
   await Promise.all(timeframes.map(async (timeframe) => {
@@ -424,8 +437,7 @@ async function buildFibonacciSignal(ticker, currentPrice, opts = {}) {
     if (opts.pairAddress && opts.chainId) {
       try {
         const gt = getGeckoTimeframe(timeframe);
-        const tfMap = { "1h": 12, "4h": 16, "24h": 48 };
-        candles = await fetchGeckoCandles(getGeckoNetwork(opts.chainId), opts.pairAddress, gt, tfMap[timeframe]);
+        candles = await fetchGeckoCandles(getGeckoNetwork(opts.chainId), opts.pairAddress, gt, getCandleConfig(timeframe).limit);
       } catch {}
     }
 
@@ -463,7 +475,7 @@ function calculateFibonacciSignal(currentPrice, candlesByTf, ticker = "") {
     signal,
     confidence,
     summary: signal === "NEUTRAL"
-      ? "mixed Fibonacci levels across 1h, 4h, and 24h"
+      ? "mixed Fibonacci levels across 1h, 4h, and 1d"
       : `${aligned}/${frames.length} timeframes align for ${signal}`,
     frames,
   };

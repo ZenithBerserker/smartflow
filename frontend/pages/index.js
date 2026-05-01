@@ -6,7 +6,7 @@ import { TRACKED_TICKERS } from "../lib/tokens";
 
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
 const FIB_COLORS = { BUY:"#00ff88", SELL:"#ff4466", NEUTRAL:"#00cfff" };
-const CHART_TFS = ["15m","1h","4h","24h","1w","1m"];
+const CHART_TFS = ["15m","1h","4h","1d","1w","1m"];
 
 function ema(values, period) {
   const k=2/(period+1);
@@ -105,7 +105,7 @@ export default function Home() {
   const [priceLoading,setPriceLoading]=useState(false);
   const [longShortData,setLongShortData]=useState(null);
   const [longShortLoading,setLongShortLoading]=useState(false);
-  const [chartTf,setChartTf]=useState("24h");
+  const [chartTf,setChartTf]=useState("1d");
   const [chartExpanded,setChartExpanded]=useState(false);
   const [chartZoom,setChartZoom]=useState(1);
   const [chartRevision,setChartRevision]=useState(0);
@@ -227,7 +227,7 @@ export default function Home() {
     const visibleCount=Math.max(12,Math.ceil(allCandles.length/chartZoom));
     const offset=Math.max(0,allCandles.length-visibleCount);
     const candles=allCandles.slice(offset);
-    const studies=buildChartStudies(candles,chartTf==="4h"||chartTf==="24h");
+    const studies=buildChartStudies(candles,chartTf==="4h"||chartTf==="1d");
     const pad={top:18,right:68,bottom:28,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
 
@@ -470,6 +470,8 @@ export default function Home() {
     .tf-btn{padding:3px 10px;background:transparent;border:1px solid #1a2a3a;color:#446688;font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;border-radius:3px;transition:all .15s}
     .tf-btn.active{border-color:#00cfff55;color:#00cfff;background:#00cfff11}
     .tf-btn:disabled{opacity:.35;cursor:not-allowed}
+    .token-select{min-width:180px;background:#070a0f;border:1px solid #1a2a3a;color:#c8d8e8;font-family:'Share Tech Mono',monospace;font-size:12px;border-radius:4px;padding:8px 10px;cursor:pointer}
+    .token-select:focus{outline:none;border-color:#00ff8855;box-shadow:0 0 10px #00ff8822}
     input::placeholder{color:#223344}
     input:focus{outline:none}
     @media (max-width: 640px){
@@ -481,8 +483,8 @@ export default function Home() {
       .live-status{width:100%!important;justify-content:flex-start!important;font-size:9px!important}
       .tabs{gap:6px!important;margin-bottom:12px!important;overflow-x:auto!important;padding-bottom:2px!important}
       .tab-btn{flex:1 0 auto!important;padding:7px 10px!important;font-size:10px!important;text-align:center!important;white-space:nowrap!important}
-      .ticker-bar{gap:5px!important;margin-bottom:10px!important;max-height:76px!important;overflow-y:auto!important}
-      .ticker-btn{padding:5px 8px!important;font-size:10px!important;min-width:45px!important}
+      .ticker-bar{gap:7px!important;margin-bottom:10px!important;align-items:stretch!important}
+      .token-select{width:100%!important;min-width:0!important}
       .price-chart-grid{grid-template-columns:1fr!important;gap:8px!important;margin-bottom:10px!important}
       .panel{padding:10px 11px!important;border-radius:6px!important}
       .price-value{font-size:24px!important;line-height:1.05!important;word-break:break-word!important}
@@ -561,14 +563,21 @@ export default function Home() {
       {/* ── PIPELINE ── */}
       {tab==="pipeline"&&<>
 
-        {/* Ticker bar */}
-        <div className="ticker-bar" style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
-          {TRACKED_TICKERS.map(t=>{
-            const z=zscores.find(z=>z.ticker===t); const alert=z&&z.zscore>2.0; const sel=selected===t;
-            return(<button key={t} className="ticker-btn" onClick={()=>setSelected(t)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",border:sel?"1px solid #00ff88":alert?"1px solid #ffaa0055":"1px solid #1a2a3a",background:sel?"#00ff8811":"transparent",color:sel?"#00ff88":alert?"#ffaa00":"#446688",boxShadow:sel?"0 0 10px #00ff8822":"none",transition:"all .15s"}}>
-              {t}{alert?" ▲":""}
-            </button>);
-          })}
+        {/* Ticker selector */}
+        <div className="ticker-bar" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>TOKEN</span>
+            <select className="token-select" value={selected} onChange={(event)=>setSelected(event.target.value)}>
+              {TRACKED_TICKERS.map(t=>{
+                const z=zscores.find(z=>z.ticker===t);
+                const alert=z&&z.zscore>2.0;
+                return <option key={t} value={t}>{t}{alert?" ▲":""}</option>;
+              })}
+            </select>
+          </div>
+          <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>
+            {TRACKED_TICKERS.length} tracked tokens
+          </div>
         </div>
 
         {/* Price + Chart row */}
@@ -663,7 +672,7 @@ export default function Home() {
           <NCard label="MENTIONS/HR" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="4chan+reddit+tg"/>
           <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.candle_source==="unavailable"?"candles unavailable":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
           <NCard label="OBV" value={liveObv?(liveObv==="rising"?"↑ rising":liveObv==="falling"?"↓ falling":"→ flat"):"—"} sub={priceData?.technicals?.buy_ratio!==undefined?`${Math.round(priceData.technicals.buy_ratio*100)}% buy ratio`:"live flow"} accent={liveObv==="rising"?"green":null}/>
-          <NCard label="FIB SIGNAL" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/24h`:"multi timeframe"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
+          <NCard label="FIB SIGNAL" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/1d`:"multi timeframe"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
         </div>
 
         {fibSignal&&<div className="fib-panel" style={{background:"#0a0f16",border:`1px solid ${(FIB_COLORS[fibSignal.signal]||"#0d2030")}33`,borderRadius:8,padding:"12px 16px",marginBottom:12}}>
