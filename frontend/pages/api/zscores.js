@@ -1,16 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
 const TICKERS = ["PEPE","WIF","BONK","TURBO","FLOKI","DOGE","SHIB","SOL","ETH","ARB","LINK","INJ"]
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
+
+  const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    return res.status(200).json({
+      tickers: getMock(),
+      timestamp: Date.now(),
+      source: "mock",
+      reason: "SUPABASE_URL or SUPABASE_KEY not set",
+    })
+  }
   
   try {
+    const supabase = createClient(supabaseUrl, supabaseKey)
     const sevenDaysAgo = Math.floor(Date.now()/1000) - 7*86400
     const oneHourAgo = Math.floor(Date.now()/1000) - 3600
 

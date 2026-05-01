@@ -62,7 +62,7 @@ cd smartflow
 pip install -r requirements.txt
 
 # Install Node dependencies (frontend)
-cd public
+cd frontend
 npm install
 ```
 
@@ -70,7 +70,7 @@ npm install
 
 ### 3. Set environment variables
 
-Create a `.env.local` file in the `public/` folder:
+Create a `.env.local` file in the `frontend/` folder:
 
 ```env
 GEMINI_API_KEY=your_gemini_key_here
@@ -78,6 +78,9 @@ TELEGRAM_API_ID=your_telegram_api_id
 TELEGRAM_API_HASH=your_telegram_api_hash
 REDDIT_CLIENT_ID=your_reddit_client_id
 REDDIT_CLIENT_SECRET=your_reddit_client_secret
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_service_or_anon_key
+BIRDEYE_API_KEY=your_birdeye_key_if_using_wallet_live_data
 ```
 
 Create a `.env` file in the root folder (for Python scrapers):
@@ -88,6 +91,8 @@ TELEGRAM_API_ID=your_telegram_api_id
 TELEGRAM_API_HASH=your_telegram_api_hash
 REDDIT_CLIENT_ID=your_reddit_client_id
 REDDIT_CLIENT_SECRET=your_reddit_client_secret
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_service_or_anon_key
 ```
 
 ---
@@ -97,17 +102,20 @@ REDDIT_CLIENT_SECRET=your_reddit_client_secret
 **Option A — run everything together:**
 ```bash
 # Terminal 1: start scrapers
-python scrapers/run_all.py
+python3 scrapers/fourchan_scraper.py
+# Optional in separate terminals:
+# python3 scrapers/reddit_scraper.py
+# python3 scrapers/telegram_scraper.py
 
 # Terminal 2: start frontend
-cd public && npm run dev
+cd frontend && npm run dev
 ```
 
 Open http://localhost:3000
 
 **Option B — frontend only (uses mock data, no keys needed):**
 ```bash
-cd public && npm run dev
+cd frontend && npm run dev
 ```
 
 ---
@@ -118,8 +126,7 @@ cd public && npm run dev
 # Install Vercel CLI
 npm install -g vercel
 
-# Deploy from the public/ folder
-cd public
+# Deploy from the repository root
 vercel
 
 # Set environment variables on Vercel dashboard:
@@ -147,7 +154,7 @@ git push -u origin main
 ## Running the scrapers continuously (free options)
 
 ### Option A: GitHub Actions (completely free)
-The repo includes `.github/workflows/scrape.yml` which runs scrapers every 15 minutes using GitHub's free CI minutes.
+You can add a `.github/workflows/scrape.yml` workflow to run scrapers on a schedule using GitHub's free CI minutes.
 
 ### Option B: Replit
 1. Import this repo into Replit
@@ -155,7 +162,7 @@ The repo includes `.github/workflows/scrape.yml` which runs scrapers every 15 mi
 3. Click Run — it stays alive with Replit's free always-on option
 
 ### Option C: Your own machine
-Just leave `python scrapers/run_all.py` running in a terminal.
+Run the scraper you need in a terminal, for example `python3 scrapers/fourchan_scraper.py`.
 
 ---
 
@@ -190,20 +197,16 @@ smartflow/
 │   ├── telegram.py        # Telegram scraper
 │   ├── dexscreener.py     # On-chain data fetcher
 │   ├── zscore.py          # Z-score calculator
-│   └── run_all.py         # Orchestrator
 ├── api/
 │   └── analyze_wallet.py  # Gemini wallet analyzer
 ├── lib/
 │   └── storage.py         # Simple JSON file storage
-├── public/                # Next.js frontend
+├── frontend/              # Next.js frontend
 │   ├── pages/
 │   │   ├── index.js       # Dashboard
 │   │   └── api/           # Serverless API routes
 │   ├── components/
 │   └── package.json
-├── .github/
-│   └── workflows/
-│       └── scrape.yml     # Free GitHub Actions scheduler
 ├── requirements.txt
 └── README.md
 ```
