@@ -25,13 +25,13 @@ export function SCard({ num, title, step, loading }) {
           <div style={{ fontSize: 17, fontWeight: 700, color: vc, textShadow: `0 0 8px ${vc}66` }}>
             {num === 1 && `Z = ${step.zscore}`}
             {num === 2 && `RSI ${step.rsi?.toFixed(0)}`}
-            {num === 3 && `${step.smart_money_count}/${step.wallets_analyzed}`}
+            {num === 3 && `${step.bullish_wallet_count ?? step.smart_money_count}/${step.wallets_analyzed}`}
             {num === 4 && (step.signal?.replace(/_/g, " ") || "--")}
           </div>
           <div style={{ fontSize: 10, color: "#335566", marginTop: 2 }}>
             {num === 1 && `${step.mentions_1h} mentions/hr`}
             {num === 2 && `OBV ${step.obv_signal}`}
-            {num === 3 && `${Math.round(step.smart_money_ratio * 100)}% smart money`}
+            {num === 3 && `${step.conviction_avg ?? Math.round(step.smart_money_ratio * 100)}% conviction`}
             {num === 4 && `${step.confidence}% confidence`}
           </div>
           <span style={{ display: "inline-block", marginTop: 6, fontSize: 10, padding: "2px 8px", borderRadius: 10, fontFamily: "'Share Tech Mono',monospace", background: step.passed ? "#00ff8811" : "#ff446611", color: step.passed ? "#00ff88" : "#ff4466" }}>{step.passed ? "pass" : "fail"}</span>
@@ -56,7 +56,7 @@ export function WalletTable({ wallets, loading, onRefresh }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #0d2030" }}>
-              {["WALLET", "VOLUME", "BUYS/SELLS", "WIN EST.", "TRADES", "VERDICT"].map((h) => <th key={h} style={{ padding: "4px 8px", textAlign: "left", fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontWeight: 400 }}>{h}</th>)}
+              {["WALLET", "ALLOC", "HOLD", "WIN EST.", "EDGE", "VERDICT"].map((h) => <th key={h} style={{ padding: "4px 8px", textAlign: "left", fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontWeight: 400 }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -70,11 +70,11 @@ export function WalletTable({ wallets, loading, onRefresh }) {
             {data.map((w, i) => (
               <tr key={i} style={{ borderBottom: "1px solid #0a1520" }}>
                 <td style={{ padding: "8px", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, color: "#335566" }} title={w.wallet_address}>{fmtWalletAddress(w.wallet_address)}</td>
-                <td style={{ padding: "8px", color: w.is_smart_money ? "#00ff88" : "#99bbcc", fontWeight: w.is_smart_money ? 700 : 400 }}>{fmtNum(w.volume_usd || w.total_realized_pnl_usd || 0)}</td>
-                <td style={{ padding: "8px", color: "#446688" }}>{w.buy_count !== undefined || w.sell_count !== undefined ? `${w.buy_count || 0}/${w.sell_count || 0}` : "--"}</td>
+                <td style={{ padding: "8px", color: w.is_smart_money ? "#00ff88" : "#99bbcc", fontWeight: w.is_smart_money ? 700 : 400 }}>{fmtNum(w.capital_allocated_usd || w.largest_alt_position_usd || w.volume_usd || 0)}</td>
+                <td style={{ padding: "8px", color: "#446688" }}>{w.avg_hold_days ? `${Math.round(w.avg_hold_days)}d` : w.investment_horizon || "--"}</td>
                 <td style={{ padding: "8px", color: w.is_smart_money ? "#00ff88" : "#446688" }}>{w.win_rate_percentage !== undefined ? `${w.win_rate_percentage}%` : "--"}</td>
-                <td style={{ padding: "8px", color: "#446688" }}>{w.total_trades}</td>
-                <td style={{ padding: "8px" }}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontFamily: "'Share Tech Mono',monospace", background: w.is_smart_money ? "#00ff8811" : "#1a2a3a", color: w.is_smart_money ? "#00ff88" : "#446688", border: `1px solid ${w.is_smart_money ? "#00ff8833" : "#1a2a3a"}` }}>{w.is_smart_money ? "smart money" : "unverified"}</span></td>
+                <td style={{ padding: "8px", color: "#446688" }}>{w.conviction_score !== undefined ? `${w.conviction_score}%` : "--"}</td>
+                <td style={{ padding: "8px" }}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontFamily: "'Share Tech Mono',monospace", background: w.wallet_verdict === "BULLISH" ? "#00ff8811" : w.wallet_verdict === "BEARISH" ? "#ff446611" : "#1a2a3a", color: w.wallet_verdict === "BULLISH" ? "#00ff88" : w.wallet_verdict === "BEARISH" ? "#ff4466" : "#446688", border: `1px solid ${w.wallet_verdict === "BULLISH" ? "#00ff8833" : w.wallet_verdict === "BEARISH" ? "#ff446633" : "#1a2a3a"}` }}>{w.wallet_verdict?.toLowerCase() || "unverified"}</span></td>
               </tr>
             ))}
           </tbody>

@@ -83,10 +83,13 @@ export default async function handler(req, res) {
     wallets_analyzed: walletData.wallets?.length || 0,
     smart_money_count: walletData.smart_count || 0,
     smart_money_ratio: walletData.smart_ratio || 0,
+    bullish_wallet_count: walletData.bullish_count || 0,
+    bearish_wallet_count: walletData.bearish_count || 0,
+    conviction_avg: walletData.conviction_avg || 0,
     smart_money_threshold: 0.5,
     wallet_results: walletData.wallets || [],
     source: walletData.source || "unknown",
-    passed: (walletData.smart_ratio || 0) >= 0.5,
+    passed: (walletData.smart_ratio || 0) >= 0.4 && (walletData.bullish_count || 0) >= (walletData.bearish_count || 0) && (walletData.conviction_avg || 0) >= 50,
   };
 
   const step4 = buildSignal(ticker, step1, step2, step3);
@@ -106,7 +109,8 @@ function buildSignal(ticker, s1, s2, s3) {
   if (allPass) {
     const confidence = Math.min(97, Math.round(
       (s1.zscore / 4.0) * 40 +
-      (s3.smart_money_ratio) * 35 +
+      (s3.smart_money_ratio) * 25 +
+      Math.min(20, (s3.conviction_avg || 0) / 5) +
       (s2.rsi < 70 ? 15 : 5) +
       (s2.obv_signal === "rising" ? 10 : 0)
     ));
@@ -114,7 +118,7 @@ function buildSignal(ticker, s1, s2, s3) {
       step: 4, name: "signal_generation",
       signal: confidence > 65 ? "HIGH_CONVICTION_BUY" : "BUY",
       confidence,
-      reason: `Z=${s1.zscore.toFixed(2)} spike confirmed. RSI=${s2.rsi?.toFixed(0)}, OBV ${s2.obv_signal}. ${s3.smart_money_count}/${s3.wallets_analyzed} wallets AI-verified smart money.`,
+      reason: `Z=${s1.zscore.toFixed(2)} spike confirmed. RSI=${s2.rsi?.toFixed(0)}, OBV ${s2.obv_signal}. ${s3.bullish_wallet_count}/${s3.wallets_analyzed} wallets bullish with ${s3.conviction_avg}% average conviction.`,
       passed: true,
     };
   }
@@ -122,7 +126,7 @@ function buildSignal(ticker, s1, s2, s3) {
   const failed = [];
   if (!s1?.passed) failed.push(`Z-score ${s1?.zscore?.toFixed(2)} < 2.0`);
   if (s1?.passed && !s2?.passed) failed.push(`technical divergence (OBV: ${s2?.obv_signal})`);
-  if (s2?.passed && !s3?.passed) failed.push(`smart money ratio ${Math.round((s3?.smart_money_ratio||0)*100)}% < 50%`);
+  if (s2?.passed && !s3?.passed) failed.push(`wallet conviction ${s3?.conviction_avg || 0}% or bullish ratio too low`);
 
   return {
     step: 4, name: "signal_generation",

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { TRACKED_TICKERS } from "../tokens";
+import { getLiveMentions } from "./socialMentions";
 
 export const TICKERS = TRACKED_TICKERS;
 
@@ -43,6 +44,9 @@ export function getUnavailableZscores() {
 }
 
 export async function getZscores() {
+  const live = await getLiveMentionZscores();
+  if (live) return live;
+
   const supabaseUrl = getEnv("SUPABASE_URL");
   const supabaseKey = getEnv("SUPABASE_KEY");
 
@@ -104,6 +108,39 @@ export async function getZscores() {
       source: "unavailable",
       reason: e.message,
     };
+  }
+}
+
+async function getLiveMentionZscores() {
+  try {
+    const live = await getLiveMentions();
+    const values = TICKERS.map((ticker) => Number(live.counts[ticker] || 0));
+    const total = values.reduce((sum, count) => sum + count, 0);
+    if (total === 0) return null;
+
+    const mean = total / Math.max(1, values.length);
+    const std = Math.sqrt(values.map((count) => Math.pow(count - mean, 2)).reduce((a, b) => a + b, 0) / Math.max(1, values.length)) || 1;
+    const tickers = TICKERS.map((ticker) => {
+      const count = Number(live.counts[ticker] || 0);
+      const zscore = (count - mean) / std;
+      return {
+        ticker,
+        zscore: Math.round(zscore * 100) / 100,
+        mentions_1h: count,
+        alert: zscore > 2.0,
+        chain: getChain(ticker),
+        source_counts: Object.fromEntries(live.sources.map((source) => [source.source, source.counts[ticker] || 0])),
+      };
+    });
+
+    return {
+      tickers,
+      source: "live_social",
+      sources: live.sources.map(({ source, scanned, error }) => ({ source, scanned, error })),
+    };
+  } catch (e) {
+    console.error("[zscores] live social scrape failed:", e.message);
+    return null;
   }
 }
 
