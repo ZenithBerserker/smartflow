@@ -217,19 +217,79 @@ export default function Home() {
     .tf-btn.active{border-color:#00cfff55;color:#00cfff;background:#00cfff11}
     input::placeholder{color:#223344}
     input:focus{outline:none}
+    @media (max-width: 640px){
+      .app-shell{padding:12px 10px!important;max-width:100%!important}
+      .app-header{align-items:flex-start!important;margin-bottom:12px!important;gap:8px!important}
+      .brand-row{gap:8px!important;min-width:0!important}
+      .brand-title{font-size:20px!important;letter-spacing:.08em!important}
+      .brand-subtitle{font-size:9px!important;max-width:150px!important;line-height:1.2!important}
+      .live-status{width:100%!important;justify-content:flex-start!important;font-size:9px!important}
+      .tabs{gap:6px!important;margin-bottom:12px!important;overflow-x:auto!important;padding-bottom:2px!important}
+      .tab-btn{flex:1 0 auto!important;padding:7px 10px!important;font-size:10px!important;text-align:center!important;white-space:nowrap!important}
+      .ticker-bar{gap:5px!important;margin-bottom:10px!important;max-height:76px!important;overflow-y:auto!important}
+      .ticker-btn{padding:5px 8px!important;font-size:10px!important;min-width:45px!important}
+      .price-chart-grid{grid-template-columns:1fr!important;gap:8px!important;margin-bottom:10px!important}
+      .panel{padding:10px 11px!important;border-radius:6px!important}
+      .price-value{font-size:24px!important;line-height:1.05!important;word-break:break-word!important}
+      .price-change{font-size:14px!important;margin-bottom:10px!important}
+      .price-stat-grid{gap:5px!important}
+      .chart-panel{padding:9px 10px!important}
+      .chart-header{align-items:flex-start!important;gap:8px!important;flex-direction:column!important;margin-bottom:6px!important}
+      .chart-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:5px!important}
+      .tf-btn,.refresh-btn{width:100%!important;padding:6px 0!important;font-size:10px!important}
+      .chart-canvas{height:170px!important}
+      .mention-panel{padding:10px 11px!important;margin-bottom:10px!important}
+      .mention-grid{gap:6px!important}
+      .mention-value{font-size:20px!important}
+      .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;margin-bottom:10px!important}
+      .metric-card{padding:8px 9px!important}
+      .metric-card-label{font-size:9px!important}
+      .metric-card-value{font-size:17px!important;line-height:1.1!important}
+      .metric-card-sub{font-size:9px!important}
+      .fib-panel{padding:10px 11px!important;margin-bottom:10px!important}
+      .fib-header{align-items:flex-start!important}
+      .fib-signal{font-size:15px!important}
+      .fib-grid{grid-template-columns:1fr!important;gap:6px!important}
+      .step-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;margin-bottom:10px!important}
+      .step-card{padding:9px!important}
+      .wallet-panel{padding:10px 10px!important;margin-bottom:10px!important}
+      .wallet-table-wrap{margin-left:-2px!important;margin-right:-2px!important}
+      .signal-box{padding:12px 12px!important;gap:10px!important;align-items:stretch!important}
+      .signal-copy{width:100%!important}
+      .signal-title{font-size:19px!important;line-height:1.1!important}
+      .signal-confidence{width:100%!important;text-align:left!important}
+      .run-btn{width:100%!important;padding:10px 12px!important}
+      .log-panel{padding:9px 10px!important}
+      .discover-table{overflow-x:auto!important;padding-bottom:4px!important}
+      .discover-grid{min-width:610px!important}
+      .lookup-form{flex-direction:column!important;gap:7px!important;margin-bottom:12px!important}
+      .lookup-input{width:100%!important;flex:none!important;padding:11px 12px!important;font-size:12px!important}
+      .lookup-btn{width:100%!important;padding:10px 12px!important}
+      .lookup-card{padding:12px!important}
+      .lookup-summary{align-items:flex-start!important}
+      .lookup-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+      .lookup-mentions{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}
+      .lookup-steps{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+    }
+    @media (max-width: 380px){
+      .metric-grid,.step-grid,.lookup-stats{grid-template-columns:1fr!important}
+      .brand-subtitle{display:none!important}
+      .price-value{font-size:22px!important}
+      .chart-canvas{height:155px!important}
+    }
   `;
 
   return(<>
     <Head><title>BlackCat — Altcoin Momentum Engine</title><meta name="viewport" content="width=device-width,initial-scale=1"/><style>{css}</style></Head>
-    <div style={{maxWidth:980,margin:"0 auto",padding:"20px 16px",overflow:"hidden"}}>
+    <div className="app-shell" style={{maxWidth:980,margin:"0 auto",padding:"20px 16px",overflow:"hidden"}}>
 
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <div style={{fontSize:24,fontWeight:700,fontFamily:"'Share Tech Mono',monospace",color:"#00ff88",textShadow:"0 0 15px #00ff8877,0 0 40px #00ff8822",letterSpacing:".12em",animation:"flicker 8s infinite"}}>BLACKCAT</div>
-          <div style={{fontSize:10,color:"#2a4455",fontFamily:"'Share Tech Mono',monospace"}}>/altcoin momentum engine v2.2</div>
+      <div className="app-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
+        <div className="brand-row" style={{display:"flex",alignItems:"center",gap:14}}>
+          <div className="brand-title" style={{fontSize:24,fontWeight:700,fontFamily:"'Share Tech Mono',monospace",color:"#00ff88",textShadow:"0 0 15px #00ff8877,0 0 40px #00ff8822",letterSpacing:".12em",animation:"flicker 8s infinite"}}>BLACKCAT</div>
+          <div className="brand-subtitle" style={{fontSize:10,color:"#2a4455",fontFamily:"'Share Tech Mono',monospace"}}>/altcoin momentum engine v2.2</div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>
+        <div className="live-status" style={{display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>
           <span style={{width:6,height:6,borderRadius:"50%",background:"#00ff88",display:"inline-block",animation:"pulse 2s infinite",boxShadow:"0 0 8px #00ff88"}}/>
           live · {new Date().toLocaleTimeString()}
         </div>
@@ -238,7 +298,7 @@ export default function Home() {
       <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,pointerEvents:"none",background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,136,.007) 2px,rgba(0,255,136,.007) 4px)",zIndex:0}}/>
 
       {/* Tabs */}
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
+      <div className="tabs" style={{display:"flex",gap:8,marginBottom:16}}>
         {[["pipeline","pipeline"],["discover","new tokens"],["lookup","token lookup"]].map(([id,label])=>(
           <button key={id} className={`tab-btn${tab===id?" active":""}`} onClick={()=>setTab(id)}>{label}</button>
         ))}
@@ -248,27 +308,27 @@ export default function Home() {
       {tab==="pipeline"&&<>
 
         {/* Ticker bar */}
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+        <div className="ticker-bar" style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
           {TRACKED_TICKERS.map(t=>{
             const z=zscores.find(z=>z.ticker===t); const alert=z&&z.zscore>2.0; const sel=selected===t;
-            return(<button key={t} onClick={()=>setSelected(t)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",border:sel?"1px solid #00ff88":alert?"1px solid #ffaa0055":"1px solid #1a2a3a",background:sel?"#00ff8811":"transparent",color:sel?"#00ff88":alert?"#ffaa00":"#446688",boxShadow:sel?"0 0 10px #00ff8822":"none",transition:"all .15s"}}>
+            return(<button key={t} className="ticker-btn" onClick={()=>setSelected(t)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",border:sel?"1px solid #00ff88":alert?"1px solid #ffaa0055":"1px solid #1a2a3a",background:sel?"#00ff8811":"transparent",color:sel?"#00ff88":alert?"#ffaa00":"#446688",boxShadow:sel?"0 0 10px #00ff8822":"none",transition:"all .15s"}}>
               {t}{alert?" ▲":""}
             </button>);
           })}
         </div>
 
         {/* Price + Chart row */}
-        <div style={{display:"grid",gridTemplateColumns:"minmax(200px,260px) minmax(0,1fr)",gap:10,marginBottom:12,overflow:"hidden"}}>
+        <div className="price-chart-grid" style={{display:"grid",gridTemplateColumns:"minmax(200px,260px) minmax(0,1fr)",gap:10,marginBottom:12,overflow:"hidden"}}>
 
           {/* Price panel */}
-          <div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"14px 16px"}}>
+          <div className="panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"14px 16px"}}>
             <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:10}}>PRICE — {selected}</div>
             {priceLoading?<div style={{fontSize:12,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>fetching...</div>:<>
-              <div style={{fontSize:28,fontWeight:700,color:"#c8d8e8",marginBottom:4,lineHeight:1}}>{fmtPrice(priceData?.price_usd)}</div>
-              <div style={{fontSize:16,fontWeight:600,color:pc>=0?"#00ff88":"#ff4466",textShadow:pc>=0?"0 0 8px #00ff8866":"0 0 8px #ff446666",marginBottom:14}}>
+              <div className="price-value" style={{fontSize:28,fontWeight:700,color:"#c8d8e8",marginBottom:4,lineHeight:1}}>{fmtPrice(priceData?.price_usd)}</div>
+              <div className="price-change" style={{fontSize:16,fontWeight:600,color:pc>=0?"#00ff88":"#ff4466",textShadow:pc>=0?"0 0 8px #00ff8866":"0 0 8px #ff446666",marginBottom:14}}>
                 {pc>=0?"+":""}{pc?.toFixed(2)||"0.00"}% 24h
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              <div className="price-stat-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                 {[
                   ["VOL 24H",fmtNum(priceData?.volume_24h)],
                   ["LIQUIDITY",fmtNum(priceData?.liquidity_usd)],
@@ -291,28 +351,28 @@ export default function Home() {
           </div>
 
           {/* Candlestick chart */}
-          <div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div className="chart-panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"10px 12px"}}>
+            <div className="chart-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
               <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>PRICE CHART — {selected} / USD</div>
-              <div style={{display:"flex",gap:4}}>
+              <div className="chart-controls" style={{display:"flex",gap:4}}>
                 {["1h","4h","24h"].map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button onClick={()=>fetchPrice(selected,chartTf)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
+                <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
             </div>
-            <canvas ref={chartRef} width={600} height={200} style={{width:"100%",height:"200px",display:"block"}}/>
+            <canvas className="chart-canvas" ref={chartRef} width={600} height={200} style={{width:"100%",height:"200px",display:"block"}}/>
           </div>
         </div>
 
         {/* Mention velocity */}
-        <div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"12px 16px",marginBottom:12}}>
+        <div className="mention-panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"12px 16px",marginBottom:12}}>
           <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:10}}>MENTION VELOCITY — {selected}</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+          <div className="mention-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
             {[["4h",mentionChanges["4h"]],["24h",mentionChanges["24h"]],["7d",mentionChanges["7d"]]].map(([tf,val])=>(
               <div key={tf} style={{textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>{tf}</div>
-                <div style={{fontSize:24,fontWeight:700,color:val>100?"#00ff88":val>30?"#00cfff":val>0?"#99ccdd":"#ff4466",textShadow:val>100?"0 0 10px #00ff8866":val>0?"0 0 6px #00cfff33":"0 0 6px #ff446633"}}>
+                <div className="mention-value" style={{fontSize:24,fontWeight:700,color:val>100?"#00ff88":val>30?"#00cfff":val>0?"#99ccdd":"#ff4466",textShadow:val>100?"0 0 10px #00ff8866":val>0?"0 0 6px #00cfff33":"0 0 6px #ff446633"}}>
                   {val>0?"+":""}{val}%
                 </div>
                 <div style={{height:2,background:"#0d2030",borderRadius:1,marginTop:6,overflow:"hidden"}}>
@@ -324,7 +384,7 @@ export default function Home() {
         </div>
 
         {/* Metric cards */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
+        <div className="metric-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
           <NCard label="Z-SCORE" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"⚡ anomalous":"7d rolling"} accent={s1?.passed?"green":null}/>
           <NCard label="MENTIONS/HR" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="4chan+reddit+tg"/>
           <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.mock?"mock candles":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
@@ -332,15 +392,15 @@ export default function Home() {
           <NCard label="FIB SIGNAL" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/24h`:"multi timeframe"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
         </div>
 
-        {fibSignal&&<div style={{background:"#0a0f16",border:`1px solid ${(FIB_COLORS[fibSignal.signal]||"#0d2030")}33`,borderRadius:8,padding:"12px 16px",marginBottom:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
+        {fibSignal&&<div className="fib-panel" style={{background:"#0a0f16",border:`1px solid ${(FIB_COLORS[fibSignal.signal]||"#0d2030")}33`,borderRadius:8,padding:"12px 16px",marginBottom:12}}>
+          <div className="fib-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
             <div>
               <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>FIBONACCI SIGNAL — MULTI TIMEFRAME</div>
               <div style={{fontSize:11,color:"#335566",marginTop:4}}>{fibSignal.summary}</div>
             </div>
-            <div style={{fontSize:18,fontWeight:700,color:FIB_COLORS[fibSignal.signal]||"#99bbcc",fontFamily:"'Share Tech Mono',monospace",textShadow:`0 0 10px ${(FIB_COLORS[fibSignal.signal]||"#99bbcc")}55`}}>{fibSignal.signal} · {fibSignal.confidence}%</div>
+            <div className="fib-signal" style={{fontSize:18,fontWeight:700,color:FIB_COLORS[fibSignal.signal]||"#99bbcc",fontFamily:"'Share Tech Mono',monospace",textShadow:`0 0 10px ${(FIB_COLORS[fibSignal.signal]||"#99bbcc")}55`}}>{fibSignal.signal} · {fibSignal.confidence}%</div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+          <div className="fib-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
             {fibSignal.frames?.map(frame=>(
               <div key={frame.timeframe} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4}}>
@@ -355,7 +415,7 @@ export default function Home() {
         </div>}
 
         {/* Step cards */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+        <div className="step-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
           <SCard num={1} title="social momentum" step={s1} loading={loading&&!s1}/>
           <SCard num={2} title="technical confluence" step={s2} loading={loading&&s1&&!s2}/>
           <SCard num={3} title="wallet AI analysis" step={s3} loading={loading&&s2&&!s3}/>
@@ -369,25 +429,25 @@ export default function Home() {
         />
 
         {/* Signal box */}
-        <div style={{background:"#0a0f16",border:`1px solid ${s4?.passed?"#00ff8833":"#0d2030"}`,borderRadius:8,padding:"16px 20px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14,boxShadow:s4?.passed?"0 0 20px #00ff8811":"none"}}>
-          <div>
+        <div className="signal-box" style={{background:"#0a0f16",border:`1px solid ${s4?.passed?"#00ff8833":"#0d2030"}`,borderRadius:8,padding:"16px 20px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14,boxShadow:s4?.passed?"0 0 20px #00ff8811":"none"}}>
+          <div className="signal-copy">
             <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>CURRENT SIGNAL</div>
-            <div style={{fontSize:22,fontWeight:700,color:SIGNAL_COLORS[s4?.signal]||"#334455",textShadow:s4?.passed?"0 0 15px #00ff8866":"none"}}>{s4?.signal?.replace(/_/g," ")||"—"}</div>
+            <div className="signal-title" style={{fontSize:22,fontWeight:700,color:SIGNAL_COLORS[s4?.signal]||"#334455",textShadow:s4?.passed?"0 0 15px #00ff8866":"none"}}>{s4?.signal?.replace(/_/g," ")||"—"}</div>
             <div style={{fontSize:11,color:"#335566",marginTop:4,maxWidth:460}}>{s4?.reason||"select ticker and run pipeline"}</div>
           </div>
-          <div style={{textAlign:"right"}}>
+          <div className="signal-confidence" style={{textAlign:"right"}}>
             <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>CONFIDENCE</div>
             <div style={{fontSize:22,fontWeight:700,color:"#00ff88"}}>{s4?`${s4.confidence}%`:"—"}</div>
             <div style={{height:3,background:"#0d2030",borderRadius:2,marginTop:6,width:120}}>
               <div style={{height:"100%",width:`${s4?.confidence||0}%`,background:"linear-gradient(90deg,#00ff88,#00cfff)",borderRadius:2,transition:"width .5s ease",boxShadow:"0 0 6px #00ff8866"}}/>
             </div>
           </div>
-          <button onClick={runPipeline} disabled={loading} style={{padding:"10px 24px",background:"transparent",border:"1px solid #00ff88",borderRadius:4,color:"#00ff88",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:loading?"not-allowed":"pointer",opacity:loading?.5:1,boxShadow:"0 0 10px #00ff8833",letterSpacing:".08em"}}>
+          <button className="run-btn" onClick={runPipeline} disabled={loading} style={{padding:"10px 24px",background:"transparent",border:"1px solid #00ff88",borderRadius:4,color:"#00ff88",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:loading?"not-allowed":"pointer",opacity:loading?.5:1,boxShadow:"0 0 10px #00ff8833",letterSpacing:".08em"}}>
             {loading?"SCANNING...":"RUN PIPELINE ↗"}
           </button>
         </div>
 
-        <div style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:8,padding:"10px 14px"}}>
+        <div className="log-panel" style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:8,padding:"10px 14px"}}>
           <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:6}}>EXECUTION LOG</div>
           <div ref={logRef} style={{fontFamily:"'Share Tech Mono',monospace",fontSize:11,lineHeight:1.9,maxHeight:110,overflowY:"auto"}}>
             {log.map((l,i)=><div key={i} style={{color:l.includes("PASS")||l.includes("signal:")?"#00ff88":l.includes("FAIL")||l.includes("error")?"#ff4466":"#335566"}}>{l}</div>)}
@@ -398,23 +458,25 @@ export default function Home() {
       {/* ── DISCOVER ── */}
       {tab==="discover"&&<div>
         <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:14}}>NEW & TRENDING TOKENS — sorted by Z-score</div>
-        <div style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"6px 12px",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0d2030",marginBottom:4}}>
-          {["TOKEN","CHAIN","AGE","LIQUIDITY","VOL 1H","MENTIONS","Z-SCORE","1H"].map(h=><span key={h}>{h}</span>)}
-        </div>
-        {newTokens.map((t,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"10px 12px",fontSize:12,borderBottom:"1px solid #0a1520",borderRadius:4,marginBottom:2,cursor:"pointer",background:t.zscore>3.5?"#00ff880a":"transparent",transition:"background .15s"}}
-            onMouseEnter={e=>e.currentTarget.style.background="#0d1f2e"}
-            onMouseLeave={e=>e.currentTarget.style.background=t.zscore>3.5?"#00ff880a":"transparent"}>
-            <span style={{fontWeight:700,color:"#c8d8e8",fontFamily:"'Share Tech Mono',monospace"}}>${t.name}</span>
-            <span><ChainBadge chain={t.chain}/></span>
-            <span style={{color:"#335566",fontSize:11}}>{t.age}</span>
-            <span style={{color:"#99bbcc"}}>{t.liquidity}</span>
-            <span style={{color:"#99bbcc"}}>{t.volume_1h}</span>
-            <span style={{color:"#00cfff"}}>{t.mentions_1h}</span>
-            <span style={{color:t.zscore>3?"#00ff88":t.zscore>2?"#00cfff":"#ffaa00",fontWeight:700,textShadow:t.zscore>3?"0 0 8px #00ff8866":"none"}}>Z {t.zscore.toFixed(1)}</span>
-            <span style={{color:"#00ff88",fontWeight:700}}>+{t.price_change_1h}%</span>
+        <div className="discover-table">
+          <div className="discover-grid" style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"6px 12px",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0d2030",marginBottom:4}}>
+            {["TOKEN","CHAIN","AGE","LIQUIDITY","VOL 1H","MENTIONS","Z-SCORE","1H"].map(h=><span key={h}>{h}</span>)}
           </div>
-        ))}
+          {newTokens.map((t,i)=>(
+            <div className="discover-grid" key={i} style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"10px 12px",fontSize:12,borderBottom:"1px solid #0a1520",borderRadius:4,marginBottom:2,cursor:"pointer",background:t.zscore>3.5?"#00ff880a":"transparent",transition:"background .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#0d1f2e"}
+              onMouseLeave={e=>e.currentTarget.style.background=t.zscore>3.5?"#00ff880a":"transparent"}>
+              <span style={{fontWeight:700,color:"#c8d8e8",fontFamily:"'Share Tech Mono',monospace"}}>${t.name}</span>
+              <span><ChainBadge chain={t.chain}/></span>
+              <span style={{color:"#335566",fontSize:11}}>{t.age}</span>
+              <span style={{color:"#99bbcc"}}>{t.liquidity}</span>
+              <span style={{color:"#99bbcc"}}>{t.volume_1h}</span>
+              <span style={{color:"#00cfff"}}>{t.mentions_1h}</span>
+              <span style={{color:t.zscore>3?"#00ff88":t.zscore>2?"#00cfff":"#ffaa00",fontWeight:700,textShadow:t.zscore>3?"0 0 8px #00ff8866":"none"}}>Z {t.zscore.toFixed(1)}</span>
+              <span style={{color:"#00ff88",fontWeight:700}}>+{t.price_change_1h}%</span>
+            </div>
+          ))}
+        </div>
         <div style={{fontSize:10,color:"#223344",fontFamily:"'Share Tech Mono',monospace",marginTop:14,padding:"10px 12px",background:"#070a0f",borderRadius:4,border:"1px solid #0d2030"}}>
           ⚠ new tokens carry extreme risk. low liquidity = high manipulation probability. always verify contract on etherscan/solscan.
         </div>
@@ -423,16 +485,17 @@ export default function Home() {
       {/* ── LOOKUP ── */}
       {tab==="lookup"&&<div>
         <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:14}}>TOKEN LOOKUP — identify any token by ticker</div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <div className="lookup-form" style={{display:"flex",gap:8,marginBottom:16}}>
           <input value={lookupQuery} onChange={e=>setLookupQuery(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&runLookup()} placeholder="enter ticker e.g. PEPE"
+            className="lookup-input"
             style={{flex:1,padding:"10px 14px",background:"#0a0f16",border:"1px solid #1a2a3a",borderRadius:4,color:"#c8d8e8",fontFamily:"'Share Tech Mono',monospace",fontSize:13}}
             onFocus={e=>e.target.style.borderColor="#00ff8866"} onBlur={e=>e.target.style.borderColor="#1a2a3a"}/>
-          <button onClick={runLookup} disabled={lookupLoading} style={{padding:"10px 20px",background:"transparent",border:"1px solid #00cfff",borderRadius:4,color:"#00cfff",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:lookupLoading?"not-allowed":"pointer",opacity:lookupLoading?.5:1,boxShadow:"0 0 8px #00cfff22"}}>
+          <button className="lookup-btn" onClick={runLookup} disabled={lookupLoading} style={{padding:"10px 20px",background:"transparent",border:"1px solid #00cfff",borderRadius:4,color:"#00cfff",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:lookupLoading?"not-allowed":"pointer",opacity:lookupLoading?.5:1,boxShadow:"0 0 8px #00cfff22"}}>
             {lookupLoading?"SCANNING...":"IDENTIFY ↗"}
           </button>
         </div>
-        {lookupResult&&<div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:16}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
+        {lookupResult&&<div className="lookup-card" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:16}}>
+          <div className="lookup-summary" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
             <div>
               <div style={{fontSize:22,fontWeight:700,color:"#00cfff",fontFamily:"'Share Tech Mono',monospace",textShadow:"0 0 12px #00cfff66"}}>${lookupQuery}</div>
               {lookupResult.price&&<div style={{fontSize:16,fontWeight:600,color:"#c8d8e8",marginTop:2}}>{fmtPrice(lookupResult.price.price_usd)} <span style={{color:lookupResult.price.price_change?.h24>=0?"#00ff88":"#ff4466",fontSize:13}}>{lookupResult.price.price_change?.h24>=0?"+":""}{lookupResult.price.price_change?.h24?.toFixed(2)||"0"}%</span></div>}
@@ -441,7 +504,7 @@ export default function Home() {
               {lookupResult.signal?.signal?.replace(/_/g," ")||"NO SIGNAL"}
             </div>
           </div>
-          {lookupResult.price&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
+          {lookupResult.price&&<div className="lookup-stats" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
             {[["VOL 24H",fmtNum(lookupResult.price.volume_24h)],["LIQUIDITY",fmtNum(lookupResult.price.liquidity_usd)],["MKT CAP",fmtNum(lookupResult.price.market_cap)],["FIB",`${lookupResult.price.fib_signal?.signal||"—"} ${lookupResult.price.fib_signal?.confidence||0}%`]].map(([l,v])=>(
               <div key={l} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px"}}>
                 <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:2}}>{l}</div>
@@ -449,7 +512,7 @@ export default function Home() {
               </div>
             ))}
           </div>}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+          <div className="lookup-mentions" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
             {[["4h",lookupResult.changes?.["4h"]],["24h",lookupResult.changes?.["24h"]],["7d",lookupResult.changes?.["7d"]]].map(([tf,val])=>(
               <div key={tf} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>MENTIONS {tf}</div>
@@ -457,7 +520,7 @@ export default function Home() {
               </div>
             ))}
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+          <div className="lookup-steps" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
             {lookupResult.steps?.map((s,i)=>(
               <div key={i} style={{background:"#070a0f",border:`1px solid ${s.passed?"#00ff8833":"#1a2a3a"}`,borderRadius:6,padding:10}}>
                 <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>STEP {s.step}</div>

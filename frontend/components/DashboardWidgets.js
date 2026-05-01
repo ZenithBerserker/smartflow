@@ -3,10 +3,10 @@ import { fmtNum, fmtWalletAddress } from "../lib/format";
 export function NCard({ label, value, sub, accent }) {
   const c = accent === "green" ? "#00ff88" : accent === "cyan" ? "#00cfff" : accent === "amber" ? "#ffaa00" : null;
   return (
-    <div style={{ background: "#0a0f16", border: `1px solid ${c ? c + "33" : "#0d2030"}`, borderRadius: 8, padding: "10px 12px", boxShadow: c ? `0 0 12px ${c}11` : "none" }}>
-      <div style={{ fontSize: 10, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 4, letterSpacing: ".08em" }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: c || "#99bbcc", textShadow: c ? `0 0 8px ${c}66` : "none" }}>{value}</div>
-      <div style={{ fontSize: 10, color: "#335566", marginTop: 2 }}>{sub}</div>
+    <div className="metric-card" style={{ background: "#0a0f16", border: `1px solid ${c ? c + "33" : "#0d2030"}`, borderRadius: 8, padding: "10px 12px", boxShadow: c ? `0 0 12px ${c}11` : "none" }}>
+      <div className="metric-card-label" style={{ fontSize: 10, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 4, letterSpacing: ".08em" }}>{label}</div>
+      <div className="metric-card-value" style={{ fontSize: 20, fontWeight: 700, color: c || "#99bbcc", textShadow: c ? `0 0 8px ${c}66` : "none" }}>{value}</div>
+      <div className="metric-card-sub" style={{ fontSize: 10, color: "#335566", marginTop: 2 }}>{sub}</div>
     </div>
   );
 }
@@ -16,7 +16,7 @@ export function SCard({ num, title, step, loading }) {
   const bc = { pass: "#00ff8844", fail: "#ff446633", active: "#00cfff44", idle: "#0d2030" }[status];
   const vc = { pass: "#00ff88", fail: "#ff4466", active: "#00cfff", idle: "#335566" }[status];
   return (
-    <div style={{ background: "#0a0f16", border: `1px solid ${bc}`, borderRadius: 8, padding: 12 }}>
+    <div className="step-card" style={{ background: "#0a0f16", border: `1px solid ${bc}`, borderRadius: 8, padding: 12 }}>
       <div style={{ fontSize: 10, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 4 }}>STEP {num}</div>
       <div style={{ fontSize: 11, color: "#446688", marginBottom: 8 }}>{title}</div>
       {loading && <div style={{ fontSize: 11, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace" }}>scanning...</div>}
@@ -44,7 +44,7 @@ export function SCard({ num, title, step, loading }) {
 export function WalletTable({ wallets, loading, onRefresh }) {
   const data = wallets && wallets.length > 0 ? wallets : getMockWallets();
   return (
-    <div style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+    <div className="wallet-panel" style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 10, color: "#336688", fontFamily: "'Share Tech Mono',monospace", letterSpacing: ".1em" }}>TOP TRADER WALLETS - AI VALIDATED</div>
@@ -52,7 +52,7 @@ export function WalletTable({ wallets, loading, onRefresh }) {
         </div>
         {onRefresh && <button onClick={onRefresh} disabled={loading} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #1a2a3a", color: "#446688", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, cursor: loading ? "not-allowed" : "pointer", borderRadius: 3 }}>refresh</button>}
       </div>
-      <div style={{ overflowX: "auto" }}>
+      <div className="wallet-table-wrap" style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #0d2030" }}>
