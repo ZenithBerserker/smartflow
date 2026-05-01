@@ -6,7 +6,7 @@ import { TRACKED_TICKERS } from "../lib/tokens";
 
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
 const FIB_COLORS = { BUY:"#00ff88", SELL:"#ff4466", NEUTRAL:"#00cfff" };
-const CHART_TFS = ["15m","1h","4h","24h","7d"];
+const CHART_TFS = ["15m","1h","4h","24h","1w","1m"];
 
 function ema(values, period) {
   const k=2/(period+1);
@@ -106,17 +106,13 @@ export default function Home() {
   const [longShortData,setLongShortData]=useState(null);
   const [longShortLoading,setLongShortLoading]=useState(false);
   const [chartTf,setChartTf]=useState("24h");
-  const [chartDrawMode,setChartDrawMode]=useState(false);
-  const [chartTool,setChartTool]=useState("line");
   const [chartExpanded,setChartExpanded]=useState(false);
-  const [chartIndicators,setChartIndicators]=useState({nw:true,zones:true,macd:true,signals:true});
+  const [chartZoom,setChartZoom]=useState(1);
   const [chartRevision,setChartRevision]=useState(0);
   const logRef=useRef(null);
   const chartRef=useRef(null);
   const chartGeomRef=useRef(null);
   const chartHoverRef=useRef(null);
-  const chartLinesRef=useRef([]);
-  const chartDraftRef=useRef(null);
 
   const addLog=useCallback((msg)=>{
     const ts=new Date().toLocaleTimeString("en-US",{hour12:false});
@@ -137,9 +133,8 @@ export default function Home() {
 
   useEffect(()=>{
     setResult(null);
-    chartLinesRef.current=[];
-    chartDraftRef.current=null;
     chartHoverRef.current=null;
+    setChartZoom(1);
     setChartRevision(v=>v+1);
     fetchPrice(selected);
     fetchLongShort(selected);
@@ -147,9 +142,8 @@ export default function Home() {
   },[selected]);
 
   useEffect(()=>{
-    chartLinesRef.current=[];
-    chartDraftRef.current=null;
     chartHoverRef.current=null;
+    setChartZoom(1);
     setChartRevision(v=>v+1);
   },[chartTf]);
 
@@ -207,7 +201,7 @@ export default function Home() {
     // Small delay to ensure DOM is laid out
     const timer = setTimeout(drawChart, 50);
     return () => clearTimeout(timer);
-  },[priceData,chartTf,chartRevision,chartDrawMode,chartExpanded,chartIndicators]);
+  },[priceData,chartTf,chartRevision,chartExpanded,chartZoom]);
 
   const drawChart = () => {
     if(!priceData?.candles||!chartRef.current) return;
@@ -220,8 +214,8 @@ export default function Home() {
     const ctx=canvas.getContext("2d");
     ctx.scale(dpr,dpr);
 
-    const candles=priceData.candles;
-    if(candles.length===0){
+    const allCandles=priceData.candles;
+    if(allCandles.length===0){
       ctx.fillStyle="#070a0f";
       ctx.fillRect(0,0,W,H);
       ctx.fillStyle="#335566";
@@ -230,14 +224,17 @@ export default function Home() {
       ctx.fillText("live candle data unavailable",W/2,H/2);
       return;
     }
+    const visibleCount=Math.max(12,Math.ceil(allCandles.length/chartZoom));
+    const offset=Math.max(0,allCandles.length-visibleCount);
+    const candles=allCandles.slice(offset);
     const studies=buildChartStudies(candles);
-    const macdHeight=chartIndicators.macd?Math.min(82,Math.max(58,H*0.22)):0;
+    const macdHeight=Math.min(82,Math.max(58,H*0.22));
     const pad={top:18,right:68,bottom:28+macdHeight,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
 
     const indicatorPrices=[
-      ...(chartIndicators.nw?studies.nw.flatMap(v=>v?[v.upper,v.lower,v.mid]:[]):[]),
-      ...(chartIndicators.zones?studies.zones.flatMap(v=>v?[v.upper,v.lower,v.basis]:[]):[]),
+      ...studies.nw.flatMap(v=>v?[v.upper,v.lower,v.mid]:[]),
+      ...studies.zones.flatMap(v=>v?[v.upper,v.lower,v.basis]:[]),
     ].filter(Number.isFinite);
     const prices=[...candles.flatMap(c=>[c.h,c.l]),...indicatorPrices];
     const minP=Math.min(...prices), maxP=Math.max(...prices);
@@ -247,7 +244,7 @@ export default function Home() {
     const toX=i=>pad.left+(i/candles.length)*cw+(cw/candles.length)*0.5;
     const priceFromY=y=>maxP-(((y-pad.top)/ch)*(maxP-minP));
     const candleW=Math.max(2,(cw/candles.length)*0.65);
-    chartGeomRef.current={W,H,pad,cw,ch,minP,maxP,toX,toY,priceFromY,candleCount:candles.length};
+    chartGeomRef.current={W,H,pad,cw,ch,minP,maxP,toX,toY,priceFromY,candleCount:candles.length,offset};
 
     const drawSeries=(values,yFn,color,width=1,dash=[])=>{
       ctx.save();
@@ -278,21 +275,16 @@ export default function Home() {
       ctx.fillText(fmtPrice(p),W-pad.right+4,y+3);
     }
 
-    if(chartIndicators.zones){
-      studies.zones.forEach((z,i)=>{
-        if(!z) return;
-        const x=toX(i), nextX=i<candles.length-1?toX(i+1):x+candleW;
-        ctx.fillStyle=z.trend==="bull"?"rgba(0,255,136,.055)":"rgba(255,68,102,.055)";
-        ctx.fillRect(x-(nextX-x)/2,toY(z.upper),Math.max(2,nextX-x),Math.max(1,toY(z.lower)-toY(z.upper)));
-      });
-      drawSeries(studies.zones.map(z=>z?.basis),z=>toY(z),"#ffaa00",1.1);
-    }
-
-    if(chartIndicators.nw){
-      drawSeries(studies.nw.map(v=>v?.upper),z=>toY(z),"#5a7cff",0.9,[4,4]);
-      drawSeries(studies.nw.map(v=>v?.lower),z=>toY(z),"#5a7cff",0.9,[4,4]);
-      drawSeries(studies.nw.map(v=>v?.mid),z=>toY(z),"#00cfff",1.5);
-    }
+    studies.zones.forEach((z,i)=>{
+      if(!z) return;
+      const x=toX(i), nextX=i<candles.length-1?toX(i+1):x+candleW;
+      ctx.fillStyle=z.trend==="bull"?"rgba(0,255,136,.055)":"rgba(255,68,102,.055)";
+      ctx.fillRect(x-(nextX-x)/2,toY(z.upper),Math.max(2,nextX-x),Math.max(1,toY(z.lower)-toY(z.upper)));
+    });
+    drawSeries(studies.zones.map(z=>z?.basis),z=>toY(z),"#ffaa00",1.1);
+    drawSeries(studies.nw.map(v=>v?.upper),z=>toY(z),"#5a7cff",0.9,[4,4]);
+    drawSeries(studies.nw.map(v=>v?.lower),z=>toY(z),"#5a7cff",0.9,[4,4]);
+    drawSeries(studies.nw.map(v=>v?.mid),z=>toY(z),"#00cfff",1.5);
 
     // Candles
     candles.forEach((c,i)=>{
@@ -316,45 +308,24 @@ export default function Home() {
 
     ctx.shadowBlur=0;
 
-    if(chartIndicators.signals){
-      studies.markers.forEach((marker)=>{
-        if(!marker) return;
-        const x=toX(marker.index);
-        const y=toY(marker.price)+(marker.type==="buy"?12:-12);
-        ctx.beginPath();
-        if(marker.type==="buy"){
-          ctx.moveTo(x,y-8); ctx.lineTo(x-7,y+6); ctx.lineTo(x+7,y+6);
-          ctx.fillStyle="#00ff88"; ctx.shadowColor="#00ff88aa";
-        }else{
-          ctx.moveTo(x,y+8); ctx.lineTo(x-7,y-6); ctx.lineTo(x+7,y-6);
-          ctx.fillStyle="#ff4466"; ctx.shadowColor="#ff4466aa";
-        }
-        ctx.shadowBlur=8;
-        ctx.closePath(); ctx.fill();
-        ctx.shadowBlur=0;
-      });
-    }
+    studies.markers.forEach((marker)=>{
+      if(!marker) return;
+      const x=toX(marker.index);
+      const y=toY(marker.price)+(marker.type==="buy"?12:-12);
+      ctx.beginPath();
+      if(marker.type==="buy"){
+        ctx.moveTo(x,y-8); ctx.lineTo(x-7,y+6); ctx.lineTo(x+7,y+6);
+        ctx.fillStyle="#00ff88"; ctx.shadowColor="#00ff88aa";
+      }else{
+        ctx.moveTo(x,y+8); ctx.lineTo(x-7,y-6); ctx.lineTo(x+7,y-6);
+        ctx.fillStyle="#ff4466"; ctx.shadowColor="#ff4466aa";
+      }
+      ctx.shadowBlur=8;
+      ctx.closePath(); ctx.fill();
+      ctx.shadowBlur=0;
+    });
 
-    // User drawings
-    const drawLine=(line,isDraft=false)=>{
-      const x1=toX(line.i1), y1=toY(line.p1);
-      const rayEnd=line.type==="ray"?candles.length-1:line.i2;
-      const slope=line.i2===line.i1?0:(line.p2-line.p1)/(line.i2-line.i1);
-      const p2=line.type==="hline"?line.p1:line.type==="ray"?line.p1+slope*(rayEnd-line.i1):line.p2;
-      const x2=line.type==="hline"?W-pad.right:toX(rayEnd), y2=toY(p2);
-      const startX=line.type==="hline"?pad.left:x1;
-      ctx.strokeStyle=isDraft?"#ffaa00":"#00cfff";
-      ctx.lineWidth=isDraft?1:1.5;
-      ctx.setLineDash(isDraft?[4,4]:[]);
-      ctx.beginPath(); ctx.moveTo(startX,y1); ctx.lineTo(x2,y2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle=isDraft?"#ffaa00":"#00cfff";
-      if(line.type!=="hline") [[x1,y1],[x2,y2]].forEach(([x,y])=>{ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
-    };
-    chartLinesRef.current.forEach(line=>drawLine(line,false));
-    if(chartDraftRef.current) drawLine(chartDraftRef.current,true);
-
-    if(chartIndicators.macd&&macdHeight>0){
+    if(macdHeight>0){
       const panelTop=H-macdHeight+8;
       const panelBottom=H-24;
       const macdValues=studies.macd.flatMap(m=>m?[m.line,m.signal,m.hist]:[]).filter(Number.isFinite);
@@ -432,8 +403,8 @@ export default function Home() {
     const rect=canvas.getBoundingClientRect();
     const x=event.clientX-rect.left;
     const y=event.clientY-rect.top;
-    const raw=((x-geom.pad.left)/geom.cw)*priceData.candles.length;
-    const index=Math.min(priceData.candles.length-1,Math.max(0,Math.floor(raw)));
+    const raw=((x-geom.pad.left)/geom.cw)*geom.candleCount;
+    const index=Math.min(geom.candleCount-1,Math.max(0,Math.floor(raw)));
     const price=geom.priceFromY(Math.min(geom.H-geom.pad.bottom,Math.max(geom.pad.top,y)));
     return {x,y,index,price};
   };
@@ -442,49 +413,21 @@ export default function Home() {
     const point=getCanvasPoint(event);
     if(!point) return;
     chartHoverRef.current=point;
-    if(chartDraftRef.current){
-      chartDraftRef.current={...chartDraftRef.current,i2:point.index,p2:point.price};
-    }
     drawChart();
   };
 
   const handleChartLeave=()=>{
     chartHoverRef.current=null;
-    if(!chartDraftRef.current) drawChart();
+    drawChart();
   };
 
-  const handleChartClick=(event)=>{
-    if(!chartDrawMode) return;
-    const point=getCanvasPoint(event);
-    if(!point) return;
-    if(chartTool==="hline"){
-      chartLinesRef.current=[...chartLinesRef.current,{type:"hline",i1:point.index,p1:point.price,i2:point.index,p2:point.price}];
-      setChartRevision(v=>v+1);
-      return;
-    }
-    if(!chartDraftRef.current){
-      chartDraftRef.current={type:chartTool,i1:point.index,p1:point.price,i2:point.index,p2:point.price};
-    }else{
-      chartLinesRef.current=[...chartLinesRef.current,{...chartDraftRef.current,type:chartTool,i2:point.index,p2:point.price}];
-      chartDraftRef.current=null;
-    }
-    setChartRevision(v=>v+1);
+  const handleChartWheel=(event)=>{
+    event.preventDefault();
+    changeChartZoom(event.deltaY > 0 ? -0.5 : 0.5);
   };
 
-  const undoChartDrawing=()=>{
-    chartLinesRef.current=chartLinesRef.current.slice(0,-1);
-    chartDraftRef.current=null;
-    setChartRevision(v=>v+1);
-  };
-
-  const toggleIndicator=(id)=>{
-    setChartIndicators(v=>({...v,[id]:!v[id]}));
-  };
-
-  const clearChartDrawings=()=>{
-    chartLinesRef.current=[];
-    chartDraftRef.current=null;
-    setChartRevision(v=>v+1);
+  const changeChartZoom=(delta)=>{
+    setChartZoom(value=>Math.min(4,Math.max(1,Math.round((value+delta)*10)/10)));
   };
 
   const runPipeline=async()=>{
@@ -551,6 +494,7 @@ export default function Home() {
     .tab-btn:hover:not(.active){border-color:#2a4a6a;color:#99bbcc}
     .tf-btn{padding:3px 10px;background:transparent;border:1px solid #1a2a3a;color:#446688;font-family:'Share Tech Mono',monospace;font-size:10px;cursor:pointer;border-radius:3px;transition:all .15s}
     .tf-btn.active{border-color:#00cfff55;color:#00cfff;background:#00cfff11}
+    .tf-btn:disabled{opacity:.35;cursor:not-allowed}
     input::placeholder{color:#223344}
     input:focus{outline:none}
     @media (max-width: 640px){
@@ -572,7 +516,6 @@ export default function Home() {
       .chart-panel{padding:9px 10px!important}
       .chart-header{align-items:flex-start!important;gap:8px!important;flex-direction:column!important;margin-bottom:6px!important}
       .chart-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:5px!important}
-      .indicator-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(2,1fr)!important;gap:5px!important}
       .tf-btn,.refresh-btn{width:100%!important;padding:6px 0!important;font-size:10px!important}
       .chart-canvas{height:170px!important}
       .mention-panel{padding:10px 11px!important;margin-bottom:10px!important}
@@ -694,25 +637,11 @@ export default function Home() {
                 {CHART_TFS.map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button className={`tf-btn${chartDrawMode?" active":""}`} onClick={()=>setChartDrawMode(v=>!v)}>draw</button>
-                {["line","ray","hline"].map(tool=>(
-                  <button key={tool} className={`tf-btn${chartDrawMode&&chartTool===tool?" active":""}`} onClick={()=>{setChartTool(tool);setChartDrawMode(true);}}>{tool}</button>
-                ))}
-                <button className="tf-btn" onClick={undoChartDrawing}>undo</button>
-                <button className="tf-btn" onClick={clearChartDrawings}>clear</button>
-                <button className="tf-btn" onClick={()=>setChartExpanded(v=>!v)}>{chartExpanded?"collapse":"expand"}</button>
-                <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
+                <button className="tf-btn" onClick={()=>changeChartZoom(-0.5)} disabled={chartZoom<=1} title="Zoom out">−</button>
+                <button className="tf-btn" onClick={()=>changeChartZoom(0.5)} disabled={chartZoom>=4} title="Zoom in">+</button>
+                <button className="tf-btn" onClick={()=>setChartExpanded(v=>!v)} title={chartExpanded?"Collapse chart":"Expand chart"}>{chartExpanded?"×":"□"}</button>
+                <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} title="Refresh chart" style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
-            </div>
-            <div className="indicator-controls" style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
-              {[
-                ["nw","NW"],
-                ["zones","DTFX zones"],
-                ["macd","MACD"],
-                ["signals","triangles"],
-              ].map(([id,label])=>(
-                <button key={id} className={`tf-btn${chartIndicators[id]?" active":""}`} onClick={()=>toggleIndicator(id)}>{label}</button>
-              ))}
             </div>
             <canvas
               className="chart-canvas"
@@ -721,8 +650,8 @@ export default function Home() {
               height={200}
               onMouseMove={handleChartMove}
               onMouseLeave={handleChartLeave}
-              onClick={handleChartClick}
-              style={{width:"100%",height:chartExpanded?"calc(100vh - 118px)":"200px",display:"block",cursor:chartDrawMode?"crosshair":"default",flex:chartExpanded?1:"none"}}
+              onWheel={handleChartWheel}
+              style={{width:"100%",height:chartExpanded?"calc(100vh - 86px)":"200px",display:"block",cursor:"crosshair",flex:chartExpanded?1:"none"}}
             />
           </div>
         </div>

@@ -5,17 +5,18 @@ import { getTokenMeta } from "../../lib/tokens";
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const ticker = (req.query.ticker || "PEPE").toUpperCase();
-  const tf = req.query.tf || "24h"; // 15m, 1h, 4h, 24h, 7d
+  const tf = normalizeTimeframe(req.query.tf || "24h"); // 15m, 1h, 4h, 24h, 1w, 1m
   const meta = getTokenMeta(ticker);
   const resolvedMeta = meta || await resolveCoinGeckoMeta(ticker);
 
   // Timeframe → DEXScreener resolution mapping
   const tfMap = {
     "15m": { limit: 15 },
-    "1h": { limit: 12 },
-    "4h": { limit: 16 },
-    "24h": { limit: 48 },
-    "7d": { limit: 42 },
+    "1h": { limit: 60 },
+    "4h": { limit: 48 },
+    "24h": { limit: 96 },
+    "1w": { limit: 84 },
+    "1m": { limit: 90 },
   };
   const { limit } = tfMap[tf] || tfMap["24h"];
 
@@ -272,7 +273,7 @@ function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal) {
 
 async function getCoinGeckoCandles(id, tf) {
   try {
-    const days = tf === "7d" ? 7 : 1;
+    const days = tf === "1m" ? 30 : tf === "1w" ? 7 : 1;
     const chartUrl = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`;
     const chartRes = await fetch(chartUrl, {
       headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
@@ -287,7 +288,7 @@ async function getCoinGeckoCandles(id, tf) {
 }
 
 function buildCandlesFromCoinGecko(prices, volumes, tf) {
-  const target = tf === "15m" ? 15 : tf === "1h" ? 12 : tf === "4h" ? 16 : tf === "7d" ? 42 : 48;
+  const target = tf === "15m" ? 15 : tf === "1h" ? 60 : tf === "4h" ? 48 : tf === "1w" ? 84 : tf === "1m" ? 90 : 96;
   if (!prices.length) return [];
   const recent = prices.slice(-Math.max(target * 2, target));
   const step = Math.max(1, Math.floor(recent.length / target));
@@ -336,10 +337,17 @@ function calculateTechnicals(candles, pairData) {
 
 function getGeckoTimeframe(tf) {
   if (tf === "15m") return { timeframe: "minute", aggregate: 1 };
-  if (tf === "1h") return { timeframe: "minute", aggregate: 5 };
-  if (tf === "4h") return { timeframe: "minute", aggregate: 15 };
-  if (tf === "7d") return { timeframe: "hour", aggregate: 4 };
-  return { timeframe: "hour", aggregate: 1 };
+  if (tf === "1h") return { timeframe: "minute", aggregate: 1 };
+  if (tf === "4h") return { timeframe: "minute", aggregate: 5 };
+  if (tf === "1w") return { timeframe: "hour", aggregate: 2 };
+  if (tf === "1m") return { timeframe: "hour", aggregate: 8 };
+  return { timeframe: "minute", aggregate: 15 };
+}
+
+function normalizeTimeframe(tf) {
+  if (tf === "7d") return "1w";
+  if (tf === "30d") return "1m";
+  return tf;
 }
 
 function getGeckoNetwork(chainId) {
