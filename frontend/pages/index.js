@@ -50,6 +50,8 @@ export default function Home() {
   const [mentionChanges,setMentionChanges]=useState({});
   const [priceData,setPriceData]=useState(null);
   const [priceLoading,setPriceLoading]=useState(false);
+  const [walletData,setWalletData]=useState(null);
+  const [walletLoading,setWalletLoading]=useState(false);
   const [chartTf,setChartTf]=useState("24h");
   const logRef=useRef(null);
   const chartRef=useRef(null);
@@ -71,6 +73,7 @@ export default function Home() {
     setMentionChanges(getMockMentionChanges(selected));
     setResult(null);
     fetchPrice(selected);
+    fetchWallets(selected);
   },[selected]);
 
   const fetchPrice=async(ticker, timeframe)=>{
@@ -82,6 +85,21 @@ export default function Home() {
       setPriceData(d);
     }catch(e){ console.error(e); }
     setPriceLoading(false);
+  };
+
+  const fetchWallets=async(ticker)=>{
+    setWalletLoading(true);
+    try{
+      const r=await fetch(`/api/wallets?ticker=${ticker}`);
+      const d=await r.json();
+      setWalletData(d);
+      if(d.source==="mock") addLog(`wallets using mock data: ${d.reason||"live source unavailable"}`);
+      else addLog(`wallets loaded from ${d.source}`);
+    }catch(e){
+      setWalletData({wallets:[],source:"error",reason:e.message});
+      addLog(`wallet error: ${e.message}`);
+    }
+    setWalletLoading(false);
   };
 
   // Draw candlestick chart using canvas
@@ -333,7 +351,13 @@ export default function Home() {
           <SCard num={4} title="signal generation" step={s4} loading={loading&&s3&&!s4}/>
         </div>
 
-        <WalletTable wallets={s3?.wallet_results||[]}/>
+        <WalletTable
+          wallets={s3?.wallet_results||walletData?.wallets||[]}
+          source={s3?.source||walletData?.source}
+          reason={walletData?.reason}
+          loading={walletLoading}
+          onRefresh={()=>fetchWallets(selected)}
+        />
 
         {/* Signal box */}
         <div style={{background:"#0a0f16",border:`1px solid ${s4?.passed?"#00ff8833":"#0d2030"}`,borderRadius:8,padding:"16px 20px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14,boxShadow:s4?.passed?"0 0 20px #00ff8811":"none"}}>
@@ -486,10 +510,19 @@ function getMockWallets(){
   ];
 }
 
-function WalletTable({wallets}){
+function WalletTable({wallets,source,reason,loading,onRefresh}){
   const data=wallets&&wallets.length>0?wallets:getMockWallets();
+  const isMock=!source||source==="mock";
   return(<div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"12px 14px",marginBottom:12}}>
-    <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:10}}>TOP TRADER WALLETS — AI VALIDATED</div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
+      <div>
+        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>TOP TRADER WALLETS — AI VALIDATED</div>
+        <div style={{fontSize:9,color:isMock?"#ffaa00":"#00ff88",fontFamily:"'Share Tech Mono',monospace",marginTop:3}}>
+          {loading?"loading wallets...":`source: ${source||"mock"}${reason?` — ${reason}`:""}`}
+        </div>
+      </div>
+      {onRefresh&&<button onClick={onRefresh} disabled={loading} style={{padding:"4px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#446688",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:loading?"not-allowed":"pointer",borderRadius:3}}>↻</button>}
+    </div>
     <div style={{overflowX:"auto"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
         <thead><tr style={{borderBottom:"1px solid #0d2030"}}>
