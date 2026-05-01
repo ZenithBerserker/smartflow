@@ -214,7 +214,7 @@ export default function Home() {
 
   return(<>
     <Head><title>BlackCat — Altcoin Momentum Engine</title><meta name="viewport" content="width=device-width,initial-scale=1"/><style>{css}</style></Head>
-    <div style={{maxWidth:980,margin:"0 auto",padding:"20px 16px"}}>
+    <div style={{maxWidth:980,margin:"0 auto",padding:"20px 16px",overflow:"hidden"}}>
 
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
@@ -251,7 +251,7 @@ export default function Home() {
         </div>
 
         {/* Price + Chart row */}
-        <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:10,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"minmax(200px,260px) minmax(0,1fr)",gap:10,marginBottom:12,overflow:"hidden"}}>
 
           {/* Price panel */}
           <div style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"14px 16px"}}>
