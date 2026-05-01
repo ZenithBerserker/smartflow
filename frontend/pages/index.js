@@ -6,6 +6,87 @@ import { TRACKED_TICKERS } from "../lib/tokens";
 
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
 const FIB_COLORS = { BUY:"#00ff88", SELL:"#ff4466", NEUTRAL:"#00cfff" };
+const CHART_TFS = ["15m","1h","4h","24h","7d"];
+
+function ema(values, period) {
+  const k=2/(period+1);
+  const out=[];
+  let prev=null;
+  values.forEach((value,i)=>{
+    if(!Number.isFinite(value)){ out.push(null); return; }
+    prev=prev===null?value:(value*k+prev*(1-k));
+    out.push(i<period-1?null:prev);
+  });
+  return out;
+}
+
+function atr(candles, period=14) {
+  const trs=candles.map((c,i)=>{
+    if(i===0) return c.h-c.l;
+    const pc=candles[i-1].c;
+    return Math.max(c.h-c.l,Math.abs(c.h-pc),Math.abs(c.l-pc));
+  });
+  return ema(trs,period);
+}
+
+function buildNadaraya(candles, bandwidth=8, mult=1.6) {
+  const closes=candles.map(c=>c.c);
+  const mid=closes.map((_,i)=>{
+    let weighted=0,total=0;
+    for(let j=Math.max(0,i-34);j<=i;j++){
+      const d=i-j;
+      const w=Math.exp(-(d*d)/(2*bandwidth*bandwidth));
+      weighted+=closes[j]*w; total+=w;
+    }
+    return total?weighted/total:null;
+  });
+  const errors=mid.map((m,i)=>Number.isFinite(m)?Math.abs(closes[i]-m):null);
+  const smoothErr=ema(errors.map(v=>v??0),14);
+  return mid.map((m,i)=>Number.isFinite(m)?{mid:m,upper:m+(smoothErr[i]||0)*mult,lower:m-(smoothErr[i]||0)*mult}:null);
+}
+
+function buildZones(candles) {
+  const closes=candles.map(c=>c.c);
+  const fast=ema(closes,21);
+  const slow=ema(closes,55);
+  const ranges=atr(candles,14);
+  return candles.map((_,i)=>{
+    if(!Number.isFinite(fast[i])||!Number.isFinite(slow[i])) return null;
+    const trend=fast[i]>=slow[i]?"bull":"bear";
+    const width=(ranges[i]||Math.abs(fast[i]-slow[i])||closes[i]*0.01)*1.25;
+    const basis=(fast[i]+slow[i])/2;
+    return {trend,basis,upper:basis+width,lower:basis-width,fast:fast[i],slow:slow[i]};
+  });
+}
+
+function buildMacd(candles) {
+  const closes=candles.map(c=>c.c);
+  const fast=ema(closes,12);
+  const slow=ema(closes,26);
+  const line=closes.map((_,i)=>Number.isFinite(fast[i])&&Number.isFinite(slow[i])?fast[i]-slow[i]:null);
+  const signal=ema(line.map(v=>v??0),9);
+  return line.map((v,i)=>Number.isFinite(v)&&Number.isFinite(signal[i])?{line:v,signal:signal[i],hist:v-signal[i]}:null);
+}
+
+function buildChartStudies(candles) {
+  const nw=buildNadaraya(candles);
+  const zones=buildZones(candles);
+  const macd=buildMacd(candles);
+  const markers=candles.map((c,i)=>{
+    const n=nw[i], z=zones[i], m=macd[i];
+    if(!n||!z||!m) return null;
+    const nwBull=c.c>=n.mid&&n.mid>=(nw[i-1]?.mid??n.mid);
+    const zoneBull=z.trend==="bull"&&c.c>=z.basis;
+    const macdBull=m.line>=m.signal&&m.hist>=0;
+    const nwBear=c.c<=n.mid&&n.mid<=(nw[i-1]?.mid??n.mid);
+    const zoneBear=z.trend==="bear"&&c.c<=z.basis;
+    const macdBear=m.line<=m.signal&&m.hist<=0;
+    if(nwBull&&zoneBull&&macdBull) return {type:"buy",price:c.l,index:i};
+    if(nwBear&&zoneBear&&macdBear) return {type:"sell",price:c.h,index:i};
+    return null;
+  });
+  return {nw,zones,macd,markers};
+}
 
 export default function Home() {
   const [selected,setSelected]=useState("TURBO");
@@ -26,6 +107,9 @@ export default function Home() {
   const [longShortLoading,setLongShortLoading]=useState(false);
   const [chartTf,setChartTf]=useState("24h");
   const [chartDrawMode,setChartDrawMode]=useState(false);
+  const [chartTool,setChartTool]=useState("line");
+  const [chartExpanded,setChartExpanded]=useState(false);
+  const [chartIndicators,setChartIndicators]=useState({nw:true,zones:true,macd:true,signals:true});
   const [chartRevision,setChartRevision]=useState(0);
   const logRef=useRef(null);
   const chartRef=useRef(null);
@@ -123,7 +207,7 @@ export default function Home() {
     // Small delay to ensure DOM is laid out
     const timer = setTimeout(drawChart, 50);
     return () => clearTimeout(timer);
-  },[priceData,chartTf,chartRevision,chartDrawMode]);
+  },[priceData,chartTf,chartRevision,chartDrawMode,chartExpanded,chartIndicators]);
 
   const drawChart = () => {
     if(!priceData?.candles||!chartRef.current) return;
@@ -146,10 +230,16 @@ export default function Home() {
       ctx.fillText("live candle data unavailable",W/2,H/2);
       return;
     }
-    const pad={top:16,right:60,bottom:28,left:8};
+    const studies=buildChartStudies(candles);
+    const macdHeight=chartIndicators.macd?Math.min(82,Math.max(58,H*0.22)):0;
+    const pad={top:18,right:68,bottom:28+macdHeight,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
 
-    const prices=candles.flatMap(c=>[c.h,c.l]);
+    const indicatorPrices=[
+      ...(chartIndicators.nw?studies.nw.flatMap(v=>v?[v.upper,v.lower,v.mid]:[]):[]),
+      ...(chartIndicators.zones?studies.zones.flatMap(v=>v?[v.upper,v.lower,v.basis]:[]):[]),
+    ].filter(Number.isFinite);
+    const prices=[...candles.flatMap(c=>[c.h,c.l]),...indicatorPrices];
     const minP=Math.min(...prices), maxP=Math.max(...prices);
     const range=maxP-minP||maxP*0.01;
 
@@ -158,6 +248,20 @@ export default function Home() {
     const priceFromY=y=>maxP-(((y-pad.top)/ch)*(maxP-minP));
     const candleW=Math.max(2,(cw/candles.length)*0.65);
     chartGeomRef.current={W,H,pad,cw,ch,minP,maxP,toX,toY,priceFromY,candleCount:candles.length};
+
+    const drawSeries=(values,yFn,color,width=1,dash=[])=>{
+      ctx.save();
+      ctx.strokeStyle=color; ctx.lineWidth=width; ctx.setLineDash(dash);
+      let open=false;
+      values.forEach((value,i)=>{
+        if(!Number.isFinite(value)){ open=false; return; }
+        const x=toX(i), y=yFn(value);
+        if(!open){ ctx.beginPath(); ctx.moveTo(x,y); open=true; }
+        else ctx.lineTo(x,y);
+      });
+      if(open) ctx.stroke();
+      ctx.restore();
+    };
 
     // Background grid
     ctx.fillStyle="#070a0f";
@@ -172,6 +276,22 @@ export default function Home() {
       ctx.font="9px 'Share Tech Mono',monospace";
       ctx.textAlign="left";
       ctx.fillText(fmtPrice(p),W-pad.right+4,y+3);
+    }
+
+    if(chartIndicators.zones){
+      studies.zones.forEach((z,i)=>{
+        if(!z) return;
+        const x=toX(i), nextX=i<candles.length-1?toX(i+1):x+candleW;
+        ctx.fillStyle=z.trend==="bull"?"rgba(0,255,136,.055)":"rgba(255,68,102,.055)";
+        ctx.fillRect(x-(nextX-x)/2,toY(z.upper),Math.max(2,nextX-x),Math.max(1,toY(z.lower)-toY(z.upper)));
+      });
+      drawSeries(studies.zones.map(z=>z?.basis),z=>toY(z),"#ffaa00",1.1);
+    }
+
+    if(chartIndicators.nw){
+      drawSeries(studies.nw.map(v=>v?.upper),z=>toY(z),"#5a7cff",0.9,[4,4]);
+      drawSeries(studies.nw.map(v=>v?.lower),z=>toY(z),"#5a7cff",0.9,[4,4]);
+      drawSeries(studies.nw.map(v=>v?.mid),z=>toY(z),"#00cfff",1.5);
     }
 
     // Candles
@@ -196,19 +316,67 @@ export default function Home() {
 
     ctx.shadowBlur=0;
 
+    if(chartIndicators.signals){
+      studies.markers.forEach((marker)=>{
+        if(!marker) return;
+        const x=toX(marker.index);
+        const y=toY(marker.price)+(marker.type==="buy"?12:-12);
+        ctx.beginPath();
+        if(marker.type==="buy"){
+          ctx.moveTo(x,y-8); ctx.lineTo(x-7,y+6); ctx.lineTo(x+7,y+6);
+          ctx.fillStyle="#00ff88"; ctx.shadowColor="#00ff88aa";
+        }else{
+          ctx.moveTo(x,y+8); ctx.lineTo(x-7,y-6); ctx.lineTo(x+7,y-6);
+          ctx.fillStyle="#ff4466"; ctx.shadowColor="#ff4466aa";
+        }
+        ctx.shadowBlur=8;
+        ctx.closePath(); ctx.fill();
+        ctx.shadowBlur=0;
+      });
+    }
+
     // User drawings
     const drawLine=(line,isDraft=false)=>{
-      const x1=toX(line.i1), y1=toY(line.p1), x2=toX(line.i2), y2=toY(line.p2);
+      const x1=toX(line.i1), y1=toY(line.p1);
+      const rayEnd=line.type==="ray"?candles.length-1:line.i2;
+      const slope=line.i2===line.i1?0:(line.p2-line.p1)/(line.i2-line.i1);
+      const p2=line.type==="hline"?line.p1:line.type==="ray"?line.p1+slope*(rayEnd-line.i1):line.p2;
+      const x2=line.type==="hline"?W-pad.right:toX(rayEnd), y2=toY(p2);
+      const startX=line.type==="hline"?pad.left:x1;
       ctx.strokeStyle=isDraft?"#ffaa00":"#00cfff";
       ctx.lineWidth=isDraft?1:1.5;
       ctx.setLineDash(isDraft?[4,4]:[]);
-      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(startX,y1); ctx.lineTo(x2,y2); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle=isDraft?"#ffaa00":"#00cfff";
-      [[x1,y1],[x2,y2]].forEach(([x,y])=>{ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
+      if(line.type!=="hline") [[x1,y1],[x2,y2]].forEach(([x,y])=>{ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
     };
     chartLinesRef.current.forEach(line=>drawLine(line,false));
     if(chartDraftRef.current) drawLine(chartDraftRef.current,true);
+
+    if(chartIndicators.macd&&macdHeight>0){
+      const panelTop=H-macdHeight+8;
+      const panelBottom=H-24;
+      const macdValues=studies.macd.flatMap(m=>m?[m.line,m.signal,m.hist]:[]).filter(Number.isFinite);
+      const maxAbs=Math.max(...macdValues.map(v=>Math.abs(v)),1e-12);
+      const macdY=v=>panelTop+((maxAbs-v)/(maxAbs*2))*(panelBottom-panelTop);
+      ctx.fillStyle="rgba(7,10,15,.78)";
+      ctx.fillRect(pad.left,panelTop-8,W-pad.right-pad.left,panelBottom-panelTop+14);
+      ctx.strokeStyle="#0d2030";
+      ctx.beginPath(); ctx.moveTo(pad.left,macdY(0)); ctx.lineTo(W-pad.right,macdY(0)); ctx.stroke();
+      studies.macd.forEach((m,i)=>{
+        if(!m) return;
+        const x=toX(i), barW=Math.max(1,candleW*.8);
+        ctx.fillStyle=m.hist>=0?"#00ff8866":"#ff446666";
+        ctx.fillRect(x-barW/2,macdY(Math.max(0,m.hist)),barW,Math.max(1,Math.abs(macdY(m.hist)-macdY(0))));
+      });
+      drawSeries(studies.macd.map(m=>m?.line),macdY,"#00cfff",1.2);
+      drawSeries(studies.macd.map(m=>m?.signal),macdY,"#ffaa00",1.2);
+      ctx.fillStyle="#335566";
+      ctx.font="9px 'Share Tech Mono',monospace";
+      ctx.textAlign="left";
+      ctx.fillText("MACD",pad.left+4,panelTop+4);
+    }
 
     // Hover crosshair and tooltip
     const hover=chartHoverRef.current;
@@ -253,7 +421,7 @@ export default function Home() {
     for(let i=0;i<candles.length;i+=step){
       const x=toX(i);
       const d=new Date(candles[i].t);
-      ctx.fillText(`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`,x,H-8);
+      ctx.fillText(`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`,x,H-macdHeight-8);
     }
     };
 
@@ -289,13 +457,28 @@ export default function Home() {
     if(!chartDrawMode) return;
     const point=getCanvasPoint(event);
     if(!point) return;
+    if(chartTool==="hline"){
+      chartLinesRef.current=[...chartLinesRef.current,{type:"hline",i1:point.index,p1:point.price,i2:point.index,p2:point.price}];
+      setChartRevision(v=>v+1);
+      return;
+    }
     if(!chartDraftRef.current){
-      chartDraftRef.current={i1:point.index,p1:point.price,i2:point.index,p2:point.price};
+      chartDraftRef.current={type:chartTool,i1:point.index,p1:point.price,i2:point.index,p2:point.price};
     }else{
-      chartLinesRef.current=[...chartLinesRef.current,{...chartDraftRef.current,i2:point.index,p2:point.price}];
+      chartLinesRef.current=[...chartLinesRef.current,{...chartDraftRef.current,type:chartTool,i2:point.index,p2:point.price}];
       chartDraftRef.current=null;
     }
     setChartRevision(v=>v+1);
+  };
+
+  const undoChartDrawing=()=>{
+    chartLinesRef.current=chartLinesRef.current.slice(0,-1);
+    chartDraftRef.current=null;
+    setChartRevision(v=>v+1);
+  };
+
+  const toggleIndicator=(id)=>{
+    setChartIndicators(v=>({...v,[id]:!v[id]}));
   };
 
   const clearChartDrawings=()=>{
@@ -389,6 +572,7 @@ export default function Home() {
       .chart-panel{padding:9px 10px!important}
       .chart-header{align-items:flex-start!important;gap:8px!important;flex-direction:column!important;margin-bottom:6px!important}
       .chart-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:5px!important}
+      .indicator-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(2,1fr)!important;gap:5px!important}
       .tf-btn,.refresh-btn{width:100%!important;padding:6px 0!important;font-size:10px!important}
       .chart-canvas{height:170px!important}
       .mention-panel{padding:10px 11px!important;margin-bottom:10px!important}
@@ -503,17 +687,32 @@ export default function Home() {
           </div>
 
           {/* Candlestick chart */}
-          <div className="chart-panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"10px 12px"}}>
-            <div className="chart-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div className="chart-panel" style={chartExpanded?{position:"fixed",inset:10,zIndex:20,background:"#0a0f16",border:"1px solid #1a4a5a",borderRadius:8,padding:"10px 12px",boxShadow:"0 0 40px #000b",display:"flex",flexDirection:"column"}:{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"10px 12px"}}>
+            <div className="chart-header" style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8,gap:8,flexWrap:"wrap"}}>
               <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>PRICE CHART — {selected} / USD</div>
-              <div className="chart-controls" style={{display:"flex",gap:4}}>
-                {["1h","4h","24h"].map(tf=>(
+              <div className="chart-controls" style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                {CHART_TFS.map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button className={`tf-btn${chartDrawMode?" active":""}`} onClick={()=>setChartDrawMode(v=>!v)}>line</button>
+                <button className={`tf-btn${chartDrawMode?" active":""}`} onClick={()=>setChartDrawMode(v=>!v)}>draw</button>
+                {["line","ray","hline"].map(tool=>(
+                  <button key={tool} className={`tf-btn${chartDrawMode&&chartTool===tool?" active":""}`} onClick={()=>{setChartTool(tool);setChartDrawMode(true);}}>{tool}</button>
+                ))}
+                <button className="tf-btn" onClick={undoChartDrawing}>undo</button>
                 <button className="tf-btn" onClick={clearChartDrawings}>clear</button>
+                <button className="tf-btn" onClick={()=>setChartExpanded(v=>!v)}>{chartExpanded?"collapse":"expand"}</button>
                 <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
+            </div>
+            <div className="indicator-controls" style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+              {[
+                ["nw","NW"],
+                ["zones","DTFX zones"],
+                ["macd","MACD"],
+                ["signals","triangles"],
+              ].map(([id,label])=>(
+                <button key={id} className={`tf-btn${chartIndicators[id]?" active":""}`} onClick={()=>toggleIndicator(id)}>{label}</button>
+              ))}
             </div>
             <canvas
               className="chart-canvas"
@@ -523,7 +722,7 @@ export default function Home() {
               onMouseMove={handleChartMove}
               onMouseLeave={handleChartLeave}
               onClick={handleChartClick}
-              style={{width:"100%",height:"200px",display:"block",cursor:chartDrawMode?"crosshair":"default"}}
+              style={{width:"100%",height:chartExpanded?"calc(100vh - 118px)":"200px",display:"block",cursor:chartDrawMode?"crosshair":"default",flex:chartExpanded?1:"none"}}
             />
           </div>
         </div>
