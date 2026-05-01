@@ -27,18 +27,36 @@ export default async function handler(req, res) {
   }
 
   // ── Step 2: Technical confluence ─────────────────────────────────────────
-  const rsi = 45 + Math.random() * 30;
-  const obvRising = Math.random() > 0.3;
-  const priceChange1h = (Math.random() * 8 - 1);
+  let priceData = null;
+  try {
+    const host = req.headers.host;
+    const protocol = host?.includes("localhost") ? "http" : "https";
+    const priceRes = await fetch(
+      `${protocol}://${host}/api/price?ticker=${ticker}&tf=24h`,
+      { signal: AbortSignal.timeout(12000) }
+    );
+    priceData = await priceRes.json();
+  } catch (e) {
+    console.error("[pipeline] Price fetch failed:", e.message);
+  }
+
+  const rsi = priceData?.technicals?.rsi ?? 50;
+  const obvSignal = priceData?.technicals?.obv_signal || "flat";
+  const priceChange1h = priceData?.price_change?.h1 ?? 0;
+  const priceChange24h = priceData?.price_change?.h24 ?? 0;
   const step2 = {
     step: 2, name: "technical_confluence",
     rsi: Math.round(rsi * 10) / 10,
-    obv_signal: obvRising ? "rising" : "flat",
-    adx: Math.round(20 + Math.random() * 20),
+    obv_signal: obvSignal,
+    obv_change_pct: priceData?.technicals?.obv?.change_pct ?? 0,
+    buy_ratio: priceData?.technicals?.buy_ratio ?? 0.5,
+    adx: null,
     price_change_1h: Math.round(priceChange1h * 100) / 100,
-    price_change_24h: Math.round((Math.random() * 25 - 3) * 100) / 100,
-    volume_24h_usd: Math.round(1e6 + Math.random() * 49e6),
-    passed: rsi < 75 && obvRising && priceChange1h > 0,
+    price_change_24h: Math.round(priceChange24h * 100) / 100,
+    volume_24h_usd: Math.round(priceData?.volume_24h || 0),
+    price_usd: priceData?.price_usd || 0,
+    source: priceData?.mock ? "mock" : "dexscreener",
+    passed: rsi > 40 && rsi < 75 && obvSignal === "rising" && priceChange1h > 0,
   };
 
   if (!step2.passed) {

@@ -36,6 +36,11 @@ function fmtNum(n) {
   return "$"+n.toFixed(2);
 }
 
+function fmtWalletAddress(addr) {
+  if (!addr || addr.length < 14) return addr || "—";
+  return `${addr.slice(0,6)}...${addr.slice(-4)}`;
+}
+
 export default function Home() {
   const [selected,setSelected]=useState("TURBO");
   const [zscores,setZscores]=useState([]);
@@ -214,6 +219,8 @@ export default function Home() {
   const s1=getStep("social_momentum"),s2=getStep("technical_confluence"),s3=getStep("wallet_analysis"),s4=getStep("signal_generation");
   const zs=zscores.find(z=>z.ticker===selected);
   const pc=priceData?.price_change?.h24||0;
+  const liveRsi=s2?.rsi??priceData?.technicals?.rsi;
+  const liveObv=s2?.obv_signal||priceData?.technicals?.obv_signal;
 
   const css=`
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
@@ -339,8 +346,8 @@ export default function Home() {
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
           <NCard label="Z-SCORE" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"⚡ anomalous":"7d rolling"} accent={s1?.passed?"green":null}/>
           <NCard label="MENTIONS/HR" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="4chan+reddit+tg"/>
-          <NCard label="RSI" value={s2?s2.rsi.toFixed(0):"—"} sub={s2?(s2.rsi>70?"overbought":"healthy"):"awaiting"} accent={s2&&s2.rsi<75&&s2.rsi>40?"cyan":null}/>
-          <NCard label="OBV" value={s2?(s2.obv_signal==="rising"?"↑ rising":"↓ flat"):"—"} sub={s2?.obv_signal==="rising"?"accumulating":"distribution?"} accent={s2?.obv_signal==="rising"?"green":null}/>
+          <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.mock?"mock candles":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
+          <NCard label="OBV" value={liveObv?(liveObv==="rising"?"↑ rising":liveObv==="falling"?"↓ falling":"→ flat"):"—"} sub={priceData?.technicals?.buy_ratio!==undefined?`${Math.round(priceData.technicals.buy_ratio*100)}% buy ratio`:"live flow"} accent={liveObv==="rising"?"green":null}/>
         </div>
 
         {/* Step cards */}
@@ -526,15 +533,15 @@ function WalletTable({wallets,source,reason,loading,onRefresh}){
     <div style={{overflowX:"auto"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
         <thead><tr style={{borderBottom:"1px solid #0d2030"}}>
-          {["WALLET","WIN RATE","TOTAL PNL","TRADES","RISK","VERDICT"].map(h=><th key={h} style={{padding:"4px 8px",textAlign:"left",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontWeight:400}}>{h}</th>)}
+          {["WALLET","VOLUME","BUYS/SELLS","WIN EST.","TRADES","VERDICT"].map(h=><th key={h} style={{padding:"4px 8px",textAlign:"left",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontWeight:400}}>{h}</th>)}
         </tr></thead>
         <tbody>{data.map((w,i)=>(
           <tr key={i} style={{borderBottom:"1px solid #0a1520"}}>
-            <td style={{padding:"8px",fontFamily:"'Share Tech Mono',monospace",fontSize:10,color:"#335566"}}>{w.wallet_address}</td>
-            <td style={{padding:"8px",color:w.is_smart_money?"#00ff88":"#446688",fontWeight:w.is_smart_money?700:400}}>{w.win_rate_percentage}%</td>
-            <td style={{padding:"8px",color:w.is_smart_money?"#00ff88":"#446688"}}>{w.total_realized_pnl_usd>=1e6?`$${(w.total_realized_pnl_usd/1e6).toFixed(1)}M`:`$${Math.round(w.total_realized_pnl_usd/1000)}K`}</td>
+            <td style={{padding:"8px",fontFamily:"'Share Tech Mono',monospace",fontSize:10,color:"#335566"}} title={w.wallet_address}>{fmtWalletAddress(w.wallet_address)}</td>
+            <td style={{padding:"8px",color:w.is_smart_money?"#00ff88":"#99bbcc",fontWeight:w.is_smart_money?700:400}}>{fmtNum(w.volume_usd||w.total_realized_pnl_usd||0)}</td>
+            <td style={{padding:"8px",color:"#446688"}}>{w.buy_count!==undefined||w.sell_count!==undefined?`${w.buy_count||0}/${w.sell_count||0}`:"—"}</td>
+            <td style={{padding:"8px",color:w.is_smart_money?"#00ff88":"#446688"}}>{w.win_rate_percentage!==undefined?`${w.win_rate_percentage}%`:"—"}</td>
             <td style={{padding:"8px",color:"#446688"}}>{w.total_trades}</td>
-            <td style={{padding:"8px",fontSize:10,color:"#446688"}}>{w.risk_classification}</td>
             <td style={{padding:"8px"}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontFamily:"'Share Tech Mono',monospace",background:w.is_smart_money?"#00ff8811":"#1a2a3a",color:w.is_smart_money?"#00ff88":"#446688",border:`1px solid ${w.is_smart_money?"#00ff8833":"#1a2a3a"}`}}>{w.is_smart_money?"smart money":"unverified"}</span></td>
           </tr>
         ))}</tbody>

@@ -220,7 +220,7 @@ ${JSON.stringify(walletsForAI, null, 2)}`;
       return buildResponse(res, ticker, ruleBasedWallets, "birdeye+rule_based", "Gemini returned invalid JSON");
     }
 
-    return buildResponse(res, ticker, analysisResults, "birdeye+gemini");
+    return buildResponse(res, ticker, enrichWallets(analysisResults, walletsForAI), "birdeye+gemini");
 
   } catch (error) {
     console.error("[wallets] Pipeline error:", error);
@@ -269,6 +269,21 @@ function num(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function enrichWallets(results, rawWallets) {
+  return results.map((wallet, i) => {
+    const raw = rawWallets.find(w => w.address === wallet.wallet_address) || rawWallets[i] || {};
+    return {
+      ...wallet,
+      wallet_address: wallet.wallet_address || raw.address,
+      volume_usd: raw.volume_usd || 0,
+      buy_count: raw.buy_count || 0,
+      sell_count: raw.sell_count || 0,
+      total_pnl_usd: raw.total_pnl_usd || 0,
+      unrealized_pnl_usd: raw.unrealized_pnl_usd || 0,
+    };
+  });
+}
+
 function scoreWalletRuleBased(w) {
   // Simple rule-based scoring when AI is unavailable
   const buys = w.buy_count || 0;
@@ -289,6 +304,11 @@ function scoreWalletRuleBased(w) {
     win_rate_percentage: winRate,
     total_realized_pnl_usd: pnl,
     total_trades: trades,
+    volume_usd: w.volume_usd || 0,
+    buy_count: buys,
+    sell_count: sells,
+    total_pnl_usd: w.total_pnl_usd || 0,
+    unrealized_pnl_usd: w.unrealized_pnl_usd || 0,
     risk_classification: risk,
     is_smart_money: isSmart,
     smart_money_reason: isSmart
