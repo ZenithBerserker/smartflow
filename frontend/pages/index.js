@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Head from "next/head";
-import { ChainBadge, NCard, SCard, WalletTable } from "../components/DashboardWidgets";
+import { ChainBadge, LongShortPanel, NCard, SCard } from "../components/DashboardWidgets";
 import { fmtNum, fmtPrice } from "../lib/format";
 import { TRACKED_TICKERS } from "../lib/tokens";
 
@@ -21,8 +21,8 @@ export default function Home() {
   const [mentionChanges,setMentionChanges]=useState({});
   const [priceData,setPriceData]=useState(null);
   const [priceLoading,setPriceLoading]=useState(false);
-  const [walletData,setWalletData]=useState(null);
-  const [walletLoading,setWalletLoading]=useState(false);
+  const [longShortData,setLongShortData]=useState(null);
+  const [longShortLoading,setLongShortLoading]=useState(false);
   const [chartTf,setChartTf]=useState("24h");
   const [chartDrawMode,setChartDrawMode]=useState(false);
   const [chartRevision,setChartRevision]=useState(0);
@@ -58,7 +58,7 @@ export default function Home() {
     chartHoverRef.current=null;
     setChartRevision(v=>v+1);
     fetchPrice(selected);
-    fetchWallets(selected);
+    fetchLongShort(selected);
   },[selected]);
 
   useEffect(()=>{
@@ -79,18 +79,18 @@ export default function Home() {
     setPriceLoading(false);
   };
 
-  const fetchWallets=async(ticker)=>{
-    setWalletLoading(true);
+  const fetchLongShort=async(ticker)=>{
+    setLongShortLoading(true);
     try{
-      const r=await fetch(`/api/wallets?ticker=${ticker}`);
+      const r=await fetch(`/api/longshort?ticker=${ticker}`);
       const d=await r.json();
-      setWalletData(d);
-      addLog(`wallets loaded for ${ticker}`);
+      setLongShortData(d);
+      addLog(`long/short loaded for ${ticker}`);
     }catch(e){
-      setWalletData({wallets:[],source:"error",reason:e.message});
-      addLog(`wallet error: ${e.message}`);
+      setLongShortData({available:false,source:"error",reason:e.message});
+      addLog(`long/short error: ${e.message}`);
     }
-    setWalletLoading(false);
+    setLongShortLoading(false);
   };
 
   // Draw candlestick chart using canvas
@@ -287,7 +287,7 @@ export default function Home() {
       d.steps?.forEach(s=>{
         if(s.name==="social_momentum") addLog(`social z=${s.zscore} — ${s.passed?"PASS":"FAIL"}`);
         if(s.name==="technical_confluence") addLog(`RSI=${s.rsi} OBV=${s.obv_signal} — ${s.passed?"PASS":"FAIL"}`);
-        if(s.name==="wallet_analysis") addLog(`${s.smart_money_count}/${s.wallets_analyzed} smart money — ${s.passed?"PASS":"FAIL"}`);
+        if(s.name==="long_short_sentiment") addLog(`long/short ${s.signal} ${s.bias_score}% — ${s.passed?"PASS":"FAIL"}`);
         if(s.name==="signal_generation") addLog(`signal: ${s.signal} (${s.confidence}%)`);
       });
     }catch(e){ addLog(`error: ${e.message}`); }
@@ -310,7 +310,7 @@ export default function Home() {
   };
 
   const getStep=(n)=>result?.steps?.find(s=>s.name===n);
-  const s1=getStep("social_momentum"),s2=getStep("technical_confluence"),s3=getStep("wallet_analysis"),s4=getStep("signal_generation");
+  const s1=getStep("social_momentum"),s2=getStep("technical_confluence"),s3=getStep("long_short_sentiment"),s4=getStep("signal_generation");
   const zs=zscores.find(z=>z.ticker===selected);
   const pc=priceData?.price_change?.h24||0;
   const liveRsi=s2?.rsi??priceData?.technicals?.rsi;
@@ -366,8 +366,7 @@ export default function Home() {
       .fib-grid{grid-template-columns:1fr!important;gap:6px!important}
       .step-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;margin-bottom:10px!important}
       .step-card{padding:9px!important}
-      .wallet-panel{padding:10px 10px!important;margin-bottom:10px!important}
-      .wallet-table-wrap{margin-left:-2px!important;margin-right:-2px!important}
+      .longshort-panel{padding:10px 10px!important;margin-bottom:10px!important}
       .signal-box{padding:12px 12px!important;gap:10px!important;align-items:stretch!important}
       .signal-copy{width:100%!important}
       .signal-title{font-size:19px!important;line-height:1.1!important}
@@ -543,14 +542,14 @@ export default function Home() {
         <div className="step-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
           <SCard num={1} title="social momentum" step={s1} loading={loading&&!s1}/>
           <SCard num={2} title="technical confluence" step={s2} loading={loading&&s1&&!s2}/>
-          <SCard num={3} title="wallet AI analysis" step={s3} loading={loading&&s2&&!s3}/>
+          <SCard num={3} title="longs vs shorts" step={s3} loading={loading&&s2&&!s3}/>
           <SCard num={4} title="signal generation" step={s4} loading={loading&&s3&&!s4}/>
         </div>
 
-        <WalletTable
-          wallets={s3?.wallet_results||walletData?.wallets||[]}
-          loading={walletLoading}
-          onRefresh={()=>fetchWallets(selected)}
+        <LongShortPanel
+          data={result?.long_short||longShortData}
+          loading={longShortLoading}
+          onRefresh={()=>fetchLongShort(selected)}
         />
 
         {/* Signal box */}

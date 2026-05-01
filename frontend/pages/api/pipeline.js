@@ -1,4 +1,3 @@
-// pages/api/pipeline.js — updated to use real wallet analysis from /api/wallets
 import { getZscoreForTicker } from "../../lib/server/zscores";
 
 export default async function handler(req, res) {
@@ -62,34 +61,33 @@ export default async function handler(req, res) {
     return res.status(200).json({ ticker, steps: [step1, step2, s4], signal: s4 });
   }
 
-  // ── Step 3: Real wallet analysis via /api/wallets ─────────────────────────
-  let walletData;
+  // ── Step 3: Long/short sentiment ─────────────────────────────────────────
+  let longShortData;
   try {
-    // Call our own wallets endpoint (works on Vercel, uses Birdeye + Gemini)
     const host = req.headers.host;
     const protocol = host?.includes("localhost") ? "http" : "https";
-    const walletsRes = await fetch(
-      `${protocol}://${host}/api/wallets?ticker=${ticker}`,
-      { signal: AbortSignal.timeout(25000) }
+    const longShortRes = await fetch(
+      `${protocol}://${host}/api/longshort?ticker=${ticker}`,
+      { signal: AbortSignal.timeout(12000) }
     );
-    walletData = await walletsRes.json();
+    longShortData = await longShortRes.json();
   } catch (e) {
-    console.error("[pipeline] Wallet fetch failed:", e.message);
-    walletData = { wallets: [], smart_count: 0, smart_ratio: 0, source: "unavailable", reason: e.message };
+    console.error("[pipeline] Long/short fetch failed:", e.message);
+    longShortData = { available: false, source: "unavailable", reason: e.message };
   }
 
   const step3 = {
-    step: 3, name: "wallet_analysis",
-    wallets_analyzed: walletData.wallets?.length || 0,
-    smart_money_count: walletData.smart_count || 0,
-    smart_money_ratio: walletData.smart_ratio || 0,
-    bullish_wallet_count: walletData.bullish_count || 0,
-    bearish_wallet_count: walletData.bearish_count || 0,
-    conviction_avg: walletData.conviction_avg || 0,
-    smart_money_threshold: 0.5,
-    wallet_results: walletData.wallets || [],
-    source: walletData.source || "unknown",
-    passed: (walletData.smart_ratio || 0) >= 0.4 && (walletData.bullish_count || 0) >= (walletData.bearish_count || 0) && (walletData.conviction_avg || 0) >= 50,
+    step: 3, name: "long_short_sentiment",
+    signal: longShortData.signal || "UNAVAILABLE",
+    bias_score: longShortData.bias_score || 0,
+    account_long_pct: longShortData.account_long_pct,
+    account_short_pct: longShortData.account_short_pct,
+    top_position_long_pct: longShortData.top_position_long_pct,
+    taker_buy_pct: longShortData.taker_buy_pct,
+    account_trend_pct: longShortData.account_trend_pct || 0,
+    source: longShortData.source || "unknown",
+    reason: longShortData.reason,
+    passed: longShortData.available && longShortData.signal === "BULLISH" && (longShortData.bias_score || 0) >= 55,
   };
 
   const step4 = buildSignal(ticker, step1, step2, step3);
@@ -98,7 +96,7 @@ export default async function handler(req, res) {
     ticker,
     steps: [step1, step2, step3, step4],
     signal: step4,
-    wallet_source: walletData.source,
+    long_short: longShortData,
     timestamp: Date.now(),
   });
 }
@@ -109,8 +107,7 @@ function buildSignal(ticker, s1, s2, s3) {
   if (allPass) {
     const confidence = Math.min(97, Math.round(
       (s1.zscore / 4.0) * 40 +
-      (s3.smart_money_ratio) * 25 +
-      Math.min(20, (s3.conviction_avg || 0) / 5) +
+      Math.min(25, ((s3.bias_score || 50) - 50) * 2.5) +
       (s2.rsi < 70 ? 15 : 5) +
       (s2.obv_signal === "rising" ? 10 : 0)
     ));
@@ -118,7 +115,7 @@ function buildSignal(ticker, s1, s2, s3) {
       step: 4, name: "signal_generation",
       signal: confidence > 65 ? "HIGH_CONVICTION_BUY" : "BUY",
       confidence,
-      reason: `Z=${s1.zscore.toFixed(2)} spike confirmed. RSI=${s2.rsi?.toFixed(0)}, OBV ${s2.obv_signal}. ${s3.bullish_wallet_count}/${s3.wallets_analyzed} wallets bullish with ${s3.conviction_avg}% average conviction.`,
+      reason: `Z=${s1.zscore.toFixed(2)} spike confirmed. RSI=${s2.rsi?.toFixed(0)}, OBV ${s2.obv_signal}. Long/short bias is ${s3.signal} at ${s3.bias_score}%.`,
       passed: true,
     };
   }
@@ -126,7 +123,7 @@ function buildSignal(ticker, s1, s2, s3) {
   const failed = [];
   if (!s1?.passed) failed.push(`Z-score ${s1?.zscore?.toFixed(2)} < 2.0`);
   if (s1?.passed && !s2?.passed) failed.push(`technical divergence (OBV: ${s2?.obv_signal})`);
-  if (s2?.passed && !s3?.passed) failed.push(`wallet conviction ${s3?.conviction_avg || 0}% or bullish ratio too low`);
+  if (s2?.passed && !s3?.passed) failed.push(`long/short bias ${s3?.signal || "unavailable"} at ${s3?.bias_score || 0}%`);
 
   return {
     step: 4, name: "signal_generation",

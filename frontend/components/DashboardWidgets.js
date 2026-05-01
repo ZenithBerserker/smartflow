@@ -1,5 +1,3 @@
-import { fmtNum, fmtWalletAddress } from "../lib/format";
-
 export function NCard({ label, value, sub, accent }) {
   const c = accent === "green" ? "#00ff88" : accent === "cyan" ? "#00cfff" : accent === "amber" ? "#ffaa00" : null;
   return (
@@ -25,13 +23,13 @@ export function SCard({ num, title, step, loading }) {
           <div style={{ fontSize: 17, fontWeight: 700, color: vc, textShadow: `0 0 8px ${vc}66` }}>
             {num === 1 && `Z = ${step.zscore}`}
             {num === 2 && `RSI ${step.rsi?.toFixed(0)}`}
-            {num === 3 && `${step.bullish_wallet_count ?? step.smart_money_count}/${step.wallets_analyzed}`}
+            {num === 3 && (step.signal || "--")}
             {num === 4 && (step.signal?.replace(/_/g, " ") || "--")}
           </div>
           <div style={{ fontSize: 10, color: "#335566", marginTop: 2 }}>
             {num === 1 && `${step.mentions_1h} mentions/hr`}
             {num === 2 && `OBV ${step.obv_signal}`}
-            {num === 3 && `${step.conviction_avg ?? Math.round(step.smart_money_ratio * 100)}% conviction`}
+            {num === 3 && `${step.bias_score || 0}% long bias`}
             {num === 4 && `${step.confidence}% confidence`}
           </div>
           <span style={{ display: "inline-block", marginTop: 6, fontSize: 10, padding: "2px 8px", borderRadius: 10, fontFamily: "'Share Tech Mono',monospace", background: step.passed ? "#00ff8811" : "#ff446611", color: step.passed ? "#00ff88" : "#ff4466" }}>{step.passed ? "pass" : "fail"}</span>
@@ -41,46 +39,49 @@ export function SCard({ num, title, step, loading }) {
   );
 }
 
-export function WalletTable({ wallets, loading, onRefresh }) {
-  const data = wallets || [];
+export function LongShortPanel({ data, loading, onRefresh }) {
+  const rows = data?.rows || [];
+  const signalColor = data?.signal === "BULLISH" ? "#00ff88" : data?.signal === "BEARISH" ? "#ff4466" : "#00cfff";
   return (
-    <div className="wallet-panel" style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+    <div className="longshort-panel" style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 10, color: "#336688", fontFamily: "'Share Tech Mono',monospace", letterSpacing: ".1em" }}>TOP TRADER WALLETS - AI VALIDATED</div>
-          {loading && <div style={{ fontSize: 9, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace", marginTop: 3 }}>loading wallets...</div>}
+          <div style={{ fontSize: 10, color: "#336688", fontFamily: "'Share Tech Mono',monospace", letterSpacing: ".1em" }}>LONGS VS SHORTS - FUTURES SENTIMENT</div>
+          {loading && <div style={{ fontSize: 9, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace", marginTop: 3 }}>loading derivatives data...</div>}
         </div>
         {onRefresh && <button onClick={onRefresh} disabled={loading} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #1a2a3a", color: "#446688", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, cursor: loading ? "not-allowed" : "pointer", borderRadius: 3 }}>refresh</button>}
       </div>
-      <div className="wallet-table-wrap" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #0d2030" }}>
-              {["WALLET", "ALLOC", "HOLD", "WIN EST.", "EDGE", "VERDICT"].map((h) => <th key={h} style={{ padding: "4px 8px", textAlign: "left", fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontWeight: 400 }}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {data.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ padding: "12px 8px", color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontSize: 10 }}>
-                  {loading ? "loading live wallet data..." : "no live wallet data available"}
-                </td>
-              </tr>
-            )}
-            {data.map((w, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #0a1520" }}>
-                <td style={{ padding: "8px", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, color: "#335566" }} title={w.wallet_address}>{fmtWalletAddress(w.wallet_address)}</td>
-                <td style={{ padding: "8px", color: w.is_smart_money ? "#00ff88" : "#99bbcc", fontWeight: w.is_smart_money ? 700 : 400 }}>{fmtNum(w.capital_allocated_usd || w.largest_alt_position_usd || w.volume_usd || 0)}</td>
-                <td style={{ padding: "8px", color: "#446688" }}>{w.avg_hold_days ? `${Math.round(w.avg_hold_days)}d` : w.investment_horizon || "--"}</td>
-                <td style={{ padding: "8px", color: w.is_smart_money ? "#00ff88" : "#446688" }}>{w.win_rate_percentage !== undefined ? `${w.win_rate_percentage}%` : "--"}</td>
-                <td style={{ padding: "8px", color: "#446688" }}>{w.conviction_score !== undefined ? `${w.conviction_score}%` : "--"}</td>
-                <td style={{ padding: "8px" }}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontFamily: "'Share Tech Mono',monospace", background: w.wallet_verdict === "BULLISH" ? "#00ff8811" : w.wallet_verdict === "BEARISH" ? "#ff446611" : "#1a2a3a", color: w.wallet_verdict === "BULLISH" ? "#00ff88" : w.wallet_verdict === "BEARISH" ? "#ff4466" : "#446688", border: `1px solid ${w.wallet_verdict === "BULLISH" ? "#00ff8833" : w.wallet_verdict === "BEARISH" ? "#ff446633" : "#1a2a3a"}` }}>{w.wallet_verdict?.toLowerCase() || "unverified"}</span></td>
-              </tr>
+      {!loading && !data?.available && (
+        <div style={{ padding: "10px 0", color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontSize: 10 }}>
+          {data?.reason || "long/short data unavailable for this ticker"}
+        </div>
+      )}
+      {data?.available && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
+            {[
+              ["SIGNAL", data.signal, signalColor],
+              ["LONGS", `${data.account_long_pct}%`, "#00ff88"],
+              ["SHORTS", `${data.account_short_pct}%`, "#ff4466"],
+              ["TAKER BUY", `${data.taker_buy_pct ?? "--"}%`, "#00cfff"],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ background: "#070a0f", border: "1px solid #0d2030", borderRadius: 6, padding: "8px 10px" }}>
+                <div style={{ fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 15, color, fontWeight: 700, fontFamily: "'Share Tech Mono',monospace" }}>{value}</div>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+          <div style={{ display: "flex", alignItems: "end", gap: 3, height: 58, padding: "8px 0 4px", borderTop: "1px solid #0d2030" }}>
+            {rows.map((row) => (
+              <div key={row.t} title={`${new Date(row.t).toLocaleString()} long ${row.long_pct}%`} style={{ flex: 1, minWidth: 4, height: `${Math.max(3, row.long_pct)}%`, background: row.long_pct >= 50 ? "#00ff88aa" : "#ff4466aa", borderRadius: "2px 2px 0 0" }} />
+            ))}
+          </div>
+          <div style={{ fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginTop: 6 }}>
+            {data.symbol} · Binance futures · trend {data.account_trend_pct >= 0 ? "+" : ""}{data.account_trend_pct}%
+          </div>
+        </>
+      )}
       </div>
-    </div>
   );
 }
 

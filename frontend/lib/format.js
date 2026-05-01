@@ -13,8 +13,3 @@ export function fmtNum(n) {
   if (n >= 1e3) return "$" + (n / 1e3).toFixed(1) + "K";
   return "$" + n.toFixed(2);
 }
-
-export function fmtWalletAddress(addr) {
-  if (!addr || addr.length < 14) return addr || "--";
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-}
