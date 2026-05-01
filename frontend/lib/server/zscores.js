@@ -1,8 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
+import { TRACKED_TICKERS } from "../tokens";
 
-export const TICKERS = ["PEPE", "WIF", "BONK", "TURBO", "FLOKI", "DOGE", "SHIB", "SOL", "ETH", "ARB", "LINK", "INJ"];
+export const TICKERS = TRACKED_TICKERS;
 
 let rootEnvCache;
 
@@ -30,14 +31,17 @@ function getEnv(name) {
 }
 
 export function getMockZscores() {
-  const base = { PEPE: 1.8, WIF: 2.1, BONK: 1.4, TURBO: 3.1, FLOKI: 1.6, DOGE: 0.9, SHIB: 1.1, SOL: 2.3, ETH: 0.7, ARB: 1.9, LINK: 1.2, INJ: 2.6 };
-  return Object.entries(base).map(([ticker, z]) => ({
+  const base = { PEPE: 1.8, WIF: 2.1, BONK: 1.4, TURBO: 3.1, FLOKI: 1.6, DOGE: 0.9, SHIB: 1.1, SOL: 2.3, ETH: 0.7, BTC: 0.6, ARB: 1.9, LINK: 1.2, INJ: 2.6, TIA: 1.5, OP: 1.7, AVAX: 1.4, MATIC: 1.2, UNI: 1.1, AAVE: 1.3, JUP: 2.4, PYTH: 2.0, RENDER: 2.2, FET: 2.1, SUI: 1.9, APT: 1.6, NEAR: 1.8, ATOM: 1.0, RUNE: 1.7, SEI: 2.0, ENA: 2.3, LDO: 1.4, PENDLE: 2.2, ONDO: 2.1, JTO: 1.9 };
+  return TICKERS.map((ticker) => {
+    const z = base[ticker] || 1.0;
+    return {
     ticker,
     zscore: Math.round((z + Math.random() * 0.3 - 0.15) * 100) / 100,
     mentions_1h: Math.round(z * 45 + Math.random() * 30),
     alert: z > 2.0,
     chain: ["SOL", "WIF", "BONK"].includes(ticker) ? "solana" : "ethereum",
-  }));
+  };
+  });
 }
 
 export async function getZscores() {
@@ -122,5 +126,5 @@ export async function getZscoreForTicker(ticker) {
 }
 
 function getChain(ticker) {
-  return ["SOL", "WIF", "BONK", "JUP"].includes(ticker) ? "solana" : "ethereum";
+  return ["SOL", "WIF", "BONK", "JUP", "PYTH", "RENDER", "JTO"].includes(ticker) ? "solana" : "ethereum";
 }

@@ -41,17 +41,14 @@ export function SCard({ num, title, step, loading }) {
   );
 }
 
-export function WalletTable({ wallets, source, reason, loading, onRefresh }) {
+export function WalletTable({ wallets, loading, onRefresh }) {
   const data = wallets && wallets.length > 0 ? wallets : getMockWallets();
-  const isMock = !source || source === "mock";
   return (
     <div style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 10, color: "#336688", fontFamily: "'Share Tech Mono',monospace", letterSpacing: ".1em" }}>TOP TRADER WALLETS - AI VALIDATED</div>
-          <div style={{ fontSize: 9, color: isMock ? "#ffaa00" : "#00ff88", fontFamily: "'Share Tech Mono',monospace", marginTop: 3 }}>
-            {loading ? "loading wallets..." : `source: ${source || "mock"}${reason ? ` - ${reason}` : ""}`}
-          </div>
+          {loading && <div style={{ fontSize: 9, color: "#00cfff", fontFamily: "'Share Tech Mono',monospace", marginTop: 3 }}>loading wallets...</div>}
         </div>
         {onRefresh && <button onClick={onRefresh} disabled={loading} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #1a2a3a", color: "#446688", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, cursor: loading ? "not-allowed" : "pointer", borderRadius: 3 }}>refresh</button>}
       </div>
@@ -81,7 +78,7 @@ export function WalletTable({ wallets, source, reason, loading, onRefresh }) {
 }
 
 export function ChainBadge({ chain }) {
-  const m = { ETH: ["#627eea22", "#627eea"], SOL: ["#9945ff22", "#9945ff"], BASE: ["#0052ff22", "#0052ff"], BSC: ["#f3ba2f22", "#f3ba2f"] };
+  const m = { ETH: ["#627eea22", "#627eea"], SOL: ["#9945ff22", "#9945ff"], BASE: ["#0052ff22", "#0052ff"], BSC: ["#f3ba2f22", "#f3ba2f"], NATIVE: ["#00cfff22", "#00cfff"] };
   const [bg, col] = m[chain] || ["#33445522", "#446688"];
   return <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: bg, color: col, fontFamily: "'Share Tech Mono',monospace", border: `1px solid ${col}44` }}>{chain}</span>;
 }

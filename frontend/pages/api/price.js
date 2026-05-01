@@ -1,58 +1,26 @@
 // pages/api/price.js
 // Real price + OHLC candle data from DEXScreener — completely free, no key needed
+import { getTokenMeta } from "../../lib/tokens";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const ticker = (req.query.ticker || "PEPE").toUpperCase();
   const tf = req.query.tf || "24h"; // 1h, 4h, 24h
-
-  const COINGECKO_IDS = {
-    PEPE: "pepe",
-    WIF: "dogwifcoin",
-    BONK: "bonk",
-    TURBO: "turbo",
-    FLOKI: "floki",
-    DOGE: "dogecoin",
-    SOL: "solana",
-    ARB: "arbitrum",
-    LINK: "chainlink",
-    INJ: "injective-protocol",
-    SHIB: "shiba-inu",
-    TIA: "celestia",
-  };
-
-  const CONTRACTS = {
-    PEPE:  { chain: "ethereum", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" },
-    WIF:   { chain: "solana",   address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm" },
-    BONK:  { chain: "solana",   address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
-    TURBO: { chain: "ethereum", address: "0xA35923162C49cF95e6BF26623385eb431ad920D3" },
-    FLOKI: { chain: "ethereum", address: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E" },
-    SHIB:  { chain: "ethereum", address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE" },
-    ARB:   { chain: "ethereum", address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },
-    LINK:  { chain: "ethereum", address: "0x514910771AF9Ca656af840dff83E8264EcF986CA" },
-    INJ:   { chain: "ethereum", address: "0xe28b3B32B6c345A34Ff64674606124Dd5Aceca30" },
-    SOL:   { chain: "solana",   address: "So11111111111111111111111111111111111111112" },
-    DOGE:  { chain: null, address: "0" },
-    TIA:   { chain: null, address: "0" },
-  };
+  const meta = getTokenMeta(ticker);
 
   // Timeframe → DEXScreener resolution mapping
   const tfMap = { "1h": { res: "5m", limit: 12 }, "4h": { res: "15m", limit: 16 }, "24h": { res: "30m", limit: 48 } };
   const { limit } = tfMap[tf] || tfMap["24h"];
 
   try {
-    if (["DOGE", "TIA"].includes(ticker) && COINGECKO_IDS[ticker]) {
-      const cg = await getCoinGeckoPrice(ticker, COINGECKO_IDS[ticker], tf);
-      if (cg) return res.status(200).json(cg);
-    }
+    const cgQuote = meta?.coingeckoId ? await getCoinGeckoQuote(meta.coingeckoId) : null;
 
     // Step 1 — get pair address from token address
     let pairAddress, chainId, pairData;
-    const known = CONTRACTS[ticker];
 
-    if (known && known.address !== "0") {
+    if (meta?.address) {
       const r = await fetch(
-        `https://api.dexscreener.com/latest/dex/tokens/${known.address}`,
+        `https://api.dexscreener.com/latest/dex/tokens/${meta.address}`,
         { headers: { "User-Agent": "BlackCat/1.0" }, signal: AbortSignal.timeout(8000) }
       );
       const d = await r.json();
@@ -86,17 +54,23 @@ export default async function handler(req, res) {
     }
 
     if (!pairData) {
+      if (cgQuote) {
+        const candles = await getCoinGeckoCandles(meta.coingeckoId, tf);
+        const filledCandles = candles.length > 0 ? candles : getMockCandles(cgQuote.usd, cgQuote.usd_24h_change || 0);
+        const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, { coingeckoId: meta.coingeckoId });
+        return res.status(200).json(buildCoinGeckoResponse(ticker, meta, cgQuote, filledCandles, fib_signal));
+      }
       const mock = getMockData(ticker);
       const candles = getMockCandles(mock.price_usd, mock.price_change.h24);
-      return res.status(200).json({ ...mock, candles, technicals: calculateTechnicals(candles, null) });
+      return res.status(200).json({ ...mock, candles, technicals: calculateTechnicals(candles, null), fib_signal: calculateFibonacciSignal(mock.price_usd, { [tf]: candles }) });
     }
 
-    const price = parseFloat(pairData.priceUsd || 0);
+    const price = cgQuote?.usd || parseFloat(pairData.priceUsd || 0);
     const priceChange = {
       m5:  parseFloat(pairData.priceChange?.m5  || 0),
       h1:  parseFloat(pairData.priceChange?.h1  || 0),
       h6:  parseFloat(pairData.priceChange?.h6  || 0),
-      h24: parseFloat(pairData.priceChange?.h24 || 0),
+      h24: cgQuote?.usd_24h_change ?? parseFloat(pairData.priceChange?.h24 || 0),
     };
 
     // Step 2 — fetch real OHLC candles from GeckoTerminal.
@@ -109,7 +83,7 @@ export default async function handler(req, res) {
       const network = getGeckoNetwork(chainId);
       candles = await fetchGeckoCandles(network, pairAddress, gt, limit);
       if (candles.length === 0) {
-        const geckoPool = await findGeckoPool(ticker, network, known?.address || pairData.baseToken?.address);
+        const geckoPool = await findGeckoPool(ticker, network, meta?.address || pairData.baseToken?.address);
         if (geckoPool) candles = await fetchGeckoCandles(network, geckoPool, gt, limit);
       }
     } catch (e) {
@@ -118,7 +92,7 @@ export default async function handler(req, res) {
 
     // If candle fetch failed, generate realistic candles from price change data
     if (candles.length === 0) {
-      const cgCandles = COINGECKO_IDS[ticker] ? await getCoinGeckoCandles(COINGECKO_IDS[ticker], tf) : [];
+      const cgCandles = meta?.coingeckoId ? await getCoinGeckoCandles(meta.coingeckoId, tf) : [];
       if (cgCandles.length > 0) {
         candleSource = "coingecko";
         candles = cgCandles;
@@ -129,6 +103,13 @@ export default async function handler(req, res) {
     }
 
     const technicals = calculateTechnicals(candles, pairData);
+    const fib_signal = await buildFibonacciSignal(ticker, price, {
+      coingeckoId: meta?.coingeckoId,
+      pairAddress,
+      chainId,
+      currentTf: tf,
+      currentCandles: candles,
+    });
 
     return res.status(200).json({
       ticker,
@@ -138,19 +119,20 @@ export default async function handler(req, res) {
       volume_24h: parseFloat(pairData.volume?.h24 || 0),
       volume_1h:  parseFloat(pairData.volume?.h1  || 0),
       liquidity_usd: parseFloat(pairData.liquidity?.usd || 0),
-      market_cap: parseFloat(pairData.marketCap || 0),
-      fdv: parseFloat(pairData.fdv || 0),
+      market_cap: cgQuote?.usd_market_cap || parseFloat(pairData.marketCap || 0),
+      fdv: cgQuote?.usd_market_cap || parseFloat(pairData.fdv || 0),
       buys_24h:  pairData.txns?.h24?.buys  || 0,
       sells_24h: pairData.txns?.h24?.sells || 0,
       buys_1h:   pairData.txns?.h1?.buys   || 0,
       sells_1h:  pairData.txns?.h1?.sells  || 0,
-      chain: chainId || known?.chain || "unknown",
+      chain: chainId || meta?.chain || "unknown",
       dex: pairData.dexId || "",
       pair_address: pairAddress || "",
       candles,
       candle_count: candles.length,
       candle_source: candleSource,
       technicals,
+      fib_signal,
       timestamp: Date.now(),
     });
 
@@ -158,7 +140,7 @@ export default async function handler(req, res) {
     console.error("[price] error:", e.message);
     const mock = getMockData(ticker);
     const candles = getMockCandles(mock.price_usd, mock.price_change.h24);
-    return res.status(200).json({ ...mock, candles, technicals: calculateTechnicals(candles, null) });
+    return res.status(200).json({ ...mock, candles, technicals: calculateTechnicals(candles, null), fib_signal: calculateFibonacciSignal(mock.price_usd, { [tf]: candles }) });
   }
 }
 
@@ -211,7 +193,7 @@ async function findGeckoPool(ticker, network, tokenAddress) {
   }
 }
 
-async function getCoinGeckoPrice(ticker, id, tf) {
+async function getCoinGeckoQuote(id) {
   try {
     const simpleUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`;
     const simpleRes = await fetch(simpleUrl, {
@@ -220,50 +202,52 @@ async function getCoinGeckoPrice(ticker, id, tf) {
     });
     if (!simpleRes.ok) return null;
     const simple = await simpleRes.json();
-    const row = simple[id];
-    if (!row?.usd) return null;
-
-    let candles = await getCoinGeckoCandles(id, tf);
-    if (candles.length === 0) candles = getMockCandles(row.usd, row.usd_24h_change || 0);
-
-    return {
-      ticker,
-      name: ticker,
-      price_usd: row.usd,
-      price_change: { m5: 0, h1: 0, h6: 0, h24: row.usd_24h_change || 0 },
-      volume_24h: row.usd_24h_vol || 0,
-      volume_1h: 0,
-      liquidity_usd: 0,
-      market_cap: row.usd_market_cap || 0,
-      fdv: row.usd_market_cap || 0,
-      buys_24h: 0,
-      sells_24h: 0,
-      buys_1h: 0,
-      sells_1h: 0,
-      chain: "native",
-      dex: "coingecko",
-      pair_address: "",
-      candles,
-      candle_count: candles.length,
-      candle_source: "coingecko",
-      technicals: calculateTechnicals(candles, null),
-      timestamp: Date.now(),
-    };
-  } catch (e) {
-    console.log("[price] coingecko fetch failed:", e.message);
+    return simple[id] || null;
+  } catch {
     return null;
   }
 }
 
+function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal) {
+  return {
+    ticker,
+    name: ticker,
+    price_usd: row.usd,
+    price_change: { m5: 0, h1: 0, h6: 0, h24: row.usd_24h_change || 0 },
+    volume_24h: row.usd_24h_vol || 0,
+    volume_1h: 0,
+    liquidity_usd: 0,
+    market_cap: row.usd_market_cap || 0,
+    fdv: row.usd_market_cap || 0,
+    buys_24h: 0,
+    sells_24h: 0,
+    buys_1h: 0,
+    sells_1h: 0,
+    chain: meta?.chain || "native",
+    dex: "coingecko",
+    pair_address: "",
+    candles,
+    candle_count: candles.length,
+    candle_source: "coingecko",
+    technicals: calculateTechnicals(candles, null),
+    fib_signal,
+    timestamp: Date.now(),
+  };
+}
+
 async function getCoinGeckoCandles(id, tf) {
-  const chartUrl = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=1`;
-  const chartRes = await fetch(chartUrl, {
-    headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!chartRes.ok) return [];
-  const chart = await chartRes.json();
-  return buildCandlesFromCoinGecko(chart.prices || [], chart.total_volumes || [], tf);
+  try {
+    const chartUrl = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=1`;
+    const chartRes = await fetch(chartUrl, {
+      headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!chartRes.ok) return [];
+    const chart = await chartRes.json();
+    return buildCandlesFromCoinGecko(chart.prices || [], chart.total_volumes || [], tf);
+  } catch {
+    return [];
+  }
 }
 
 function buildCandlesFromCoinGecko(prices, volumes, tf) {
@@ -380,11 +364,154 @@ function calculateOBV(candles) {
   };
 }
 
+async function buildFibonacciSignal(ticker, currentPrice, opts = {}) {
+  const timeframes = ["1h", "4h", "24h"];
+  const candlesByTf = {};
+
+  await Promise.all(timeframes.map(async (timeframe) => {
+    if (opts.currentTf === timeframe && opts.currentCandles?.length) {
+      candlesByTf[timeframe] = opts.currentCandles;
+      return;
+    }
+
+    let candles = [];
+    if (opts.pairAddress && opts.chainId) {
+      try {
+        const gt = getGeckoTimeframe(timeframe);
+        const tfMap = { "1h": 12, "4h": 16, "24h": 48 };
+        candles = await fetchGeckoCandles(getGeckoNetwork(opts.chainId), opts.pairAddress, gt, tfMap[timeframe]);
+      } catch {}
+    }
+
+    if (candles.length === 0 && opts.coingeckoId) {
+      candles = await getCoinGeckoCandles(opts.coingeckoId, timeframe);
+    }
+
+    if (candles.length === 0) {
+      candles = getMockCandles(currentPrice, 0);
+    }
+
+    candlesByTf[timeframe] = candles;
+  }));
+
+  return calculateFibonacciSignal(currentPrice, candlesByTf, ticker);
+}
+
+function calculateFibonacciSignal(currentPrice, candlesByTf, ticker = "") {
+  const frames = Object.entries(candlesByTf)
+    .map(([timeframe, candles]) => analyzeFibonacciFrame(timeframe, currentPrice, candles))
+    .filter(Boolean);
+
+  if (frames.length === 0) {
+    return {
+      signal: "NEUTRAL",
+      confidence: 0,
+      summary: "not enough candle data",
+      frames: [],
+    };
+  }
+
+  const score = frames.reduce((sum, frame) => sum + frame.score, 0);
+  const signal = score >= 2 ? "BUY" : score <= -2 ? "SELL" : "NEUTRAL";
+  const confidence = Math.min(95, Math.round((Math.abs(score) / (frames.length * 2)) * 100));
+  const aligned = frames.filter((frame) => frame.signal === signal).length;
+
+  return {
+    ticker,
+    signal,
+    confidence,
+    summary: signal === "NEUTRAL"
+      ? "mixed Fibonacci levels across 1h, 4h, and 24h"
+      : `${aligned}/${frames.length} timeframes align for ${signal}`,
+    frames,
+  };
+}
+
+function analyzeFibonacciFrame(timeframe, currentPrice, candles) {
+  const usable = (candles || []).filter((c) =>
+    Number.isFinite(c.h) && Number.isFinite(c.l) && Number.isFinite(c.c)
+  );
+  if (usable.length < 5 || !Number.isFinite(currentPrice)) return null;
+
+  const high = Math.max(...usable.map((c) => c.h));
+  const low = Math.min(...usable.map((c) => c.l));
+  const range = high - low;
+  if (!Number.isFinite(range) || range <= 0) return null;
+
+  const first = usable[0].c;
+  const last = usable[usable.length - 1].c;
+  const trend = last >= first ? "uptrend" : "downtrend";
+  const pos = (currentPrice - low) / range;
+  const levels = {
+    "0.236": low + range * 0.236,
+    "0.382": low + range * 0.382,
+    "0.500": low + range * 0.5,
+    "0.618": low + range * 0.618,
+    "0.786": low + range * 0.786,
+  };
+
+  let signal = "NEUTRAL";
+  let score = 0;
+  let zone = "mid range";
+
+  if (trend === "uptrend") {
+    const buyLow = high - range * 0.618;
+    const buyHigh = high - range * 0.382;
+    const sellLine = high - range * 0.236;
+    if (currentPrice >= buyLow && currentPrice <= buyHigh) {
+      signal = "BUY";
+      score = 1;
+      zone = "golden retracement support";
+    } else if (currentPrice > sellLine) {
+      signal = "SELL";
+      score = -1;
+      zone = "near Fibonacci resistance";
+    } else if (currentPrice < high - range * 0.786) {
+      signal = "SELL";
+      score = -1;
+      zone = "lost deep retracement";
+    }
+  } else {
+    const sellLow = low + range * 0.382;
+    const sellHigh = low + range * 0.618;
+    const buyLine = low + range * 0.236;
+    if (currentPrice >= sellLow && currentPrice <= sellHigh) {
+      signal = "SELL";
+      score = -1;
+      zone = "bearish retracement resistance";
+    } else if (currentPrice < buyLine) {
+      signal = "BUY";
+      score = 1;
+      zone = "near Fibonacci support";
+    } else if (currentPrice > low + range * 0.786) {
+      signal = "BUY";
+      score = 1;
+      zone = "reclaiming deep retracement";
+    }
+  }
+
+  return {
+    timeframe,
+    signal,
+    score,
+    trend,
+    zone,
+    position: Math.round(pos * 1000) / 10,
+    high,
+    low,
+    levels,
+  };
+}
+
 function getMockData(ticker) {
   const prices = {
     PEPE:0.00001234, WIF:2.87, BONK:0.000028, TURBO:0.0084,
-    FLOKI:0.000198, DOGE:0.142, SOL:148.3, ARB:0.94,
-    LINK:13.4, INJ:22.1, SHIB:0.0000242, TIA:6.8,
+    FLOKI:0.000198, DOGE:0.142, SOL:148.3, ETH:3200, BTC:65000,
+    ARB:0.94, LINK:13.4, INJ:22.1, SHIB:0.0000242, TIA:6.8,
+    OP:2.1, AVAX:35, MATIC:0.72, UNI:7.8, AAVE:95, JUP:0.95,
+    PYTH:0.42, RENDER:7.5, FET:1.9, SUI:1.25, APT:8.4, NEAR:5.2,
+    ATOM:7.1, RUNE:5.7, SEI:0.55, ENA:0.82, LDO:2.0, PENDLE:5.8,
+    ONDO:1.05, JTO:3.1,
   };
   const p = prices[ticker] || 0.001;
   return {

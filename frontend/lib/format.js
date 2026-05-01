@@ -3,7 +3,7 @@ export function fmtPrice(p) {
   if (p >= 1000) return "$" + p.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (p >= 1) return "$" + p.toFixed(4);
   if (p >= 0.0001) return "$" + p.toFixed(6);
-  return "$" + p.toExponential(3);
+  return "$" + p.toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 export function fmtNum(n) {

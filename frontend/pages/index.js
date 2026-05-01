@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Head from "next/head";
 import { ChainBadge, NCard, SCard, WalletTable } from "../components/DashboardWidgets";
 import { fmtNum, fmtPrice } from "../lib/format";
+import { TRACKED_TICKERS } from "../lib/tokens";
 
-const TICKERS = ["PEPE","WIF","BONK","TURBO","FLOKI","DOGE","SOL","ARB","LINK","INJ","SHIB","TIA"];
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
+const FIB_COLORS = { BUY:"#00ff88", SELL:"#ff4466", NEUTRAL:"#00cfff" };
 
 function getMockNewTokens() {
   return [
@@ -78,8 +79,7 @@ export default function Home() {
       const r=await fetch(`/api/wallets?ticker=${ticker}`);
       const d=await r.json();
       setWalletData(d);
-      if(d.source==="mock") addLog(`wallets using mock data: ${d.reason||"live source unavailable"}`);
-      else addLog(`wallets loaded from ${d.source}`);
+      addLog(`wallets loaded for ${ticker}`);
     }catch(e){
       setWalletData({wallets:[],source:"error",reason:e.message});
       addLog(`wallet error: ${e.message}`);
@@ -201,6 +201,7 @@ export default function Home() {
   const pc=priceData?.price_change?.h24||0;
   const liveRsi=s2?.rsi??priceData?.technicals?.rsi;
   const liveObv=s2?.obv_signal||priceData?.technicals?.obv_signal;
+  const fibSignal=priceData?.fib_signal;
 
   const css=`
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
@@ -248,7 +249,7 @@ export default function Home() {
 
         {/* Ticker bar */}
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
-          {TICKERS.map(t=>{
+          {TRACKED_TICKERS.map(t=>{
             const z=zscores.find(z=>z.ticker===t); const alert=z&&z.zscore>2.0; const sel=selected===t;
             return(<button key={t} onClick={()=>setSelected(t)} style={{padding:"4px 12px",borderRadius:4,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Share Tech Mono',monospace",border:sel?"1px solid #00ff88":alert?"1px solid #ffaa0055":"1px solid #1a2a3a",background:sel?"#00ff8811":"transparent",color:sel?"#00ff88":alert?"#ffaa00":"#446688",boxShadow:sel?"0 0 10px #00ff8822":"none",transition:"all .15s"}}>
               {t}{alert?" ▲":""}
@@ -282,8 +283,8 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              {priceData?.chain&&<div style={{marginTop:10,display:"flex",gap:6,alignItems:"center"}}>
-                <ChainBadge chain={priceData.chain==="solana"?"SOL":"ETH"}/>
+              {priceData?.chain&&<div style={{marginTop:10,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                <ChainBadge chain={priceData.chain==="solana"?"SOL":priceData.chain==="native"?"NATIVE":"ETH"}/>
                 <span style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>{priceData.dex||""}</span>
               </div>}
             </>}
@@ -323,12 +324,35 @@ export default function Home() {
         </div>
 
         {/* Metric cards */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
           <NCard label="Z-SCORE" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"⚡ anomalous":"7d rolling"} accent={s1?.passed?"green":null}/>
           <NCard label="MENTIONS/HR" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="4chan+reddit+tg"/>
           <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.mock?"mock candles":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
           <NCard label="OBV" value={liveObv?(liveObv==="rising"?"↑ rising":liveObv==="falling"?"↓ falling":"→ flat"):"—"} sub={priceData?.technicals?.buy_ratio!==undefined?`${Math.round(priceData.technicals.buy_ratio*100)}% buy ratio`:"live flow"} accent={liveObv==="rising"?"green":null}/>
+          <NCard label="FIB SIGNAL" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/24h`:"multi timeframe"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
         </div>
+
+        {fibSignal&&<div style={{background:"#0a0f16",border:`1px solid ${(FIB_COLORS[fibSignal.signal]||"#0d2030")}33`,borderRadius:8,padding:"12px 16px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
+            <div>
+              <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>FIBONACCI SIGNAL — MULTI TIMEFRAME</div>
+              <div style={{fontSize:11,color:"#335566",marginTop:4}}>{fibSignal.summary}</div>
+            </div>
+            <div style={{fontSize:18,fontWeight:700,color:FIB_COLORS[fibSignal.signal]||"#99bbcc",fontFamily:"'Share Tech Mono',monospace",textShadow:`0 0 10px ${(FIB_COLORS[fibSignal.signal]||"#99bbcc")}55`}}>{fibSignal.signal} · {fibSignal.confidence}%</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {fibSignal.frames?.map(frame=>(
+              <div key={frame.timeframe} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>{frame.timeframe.toUpperCase()}</span>
+                  <span style={{fontSize:10,color:FIB_COLORS[frame.signal]||"#99bbcc",fontFamily:"'Share Tech Mono',monospace",fontWeight:700}}>{frame.signal}</span>
+                </div>
+                <div style={{fontSize:11,color:"#99bbcc"}}>{frame.zone}</div>
+                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginTop:4}}>{frame.trend} · {frame.position}% range</div>
+              </div>
+            ))}
+          </div>
+        </div>}
 
         {/* Step cards */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
@@ -340,8 +364,6 @@ export default function Home() {
 
         <WalletTable
           wallets={s3?.wallet_results||walletData?.wallets||[]}
-          source={s3?.source||walletData?.source}
-          reason={walletData?.reason}
           loading={walletLoading}
           onRefresh={()=>fetchWallets(selected)}
         />
@@ -419,8 +441,8 @@ export default function Home() {
               {lookupResult.signal?.signal?.replace(/_/g," ")||"NO SIGNAL"}
             </div>
           </div>
-          {lookupResult.price&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
-            {[["VOL 24H",fmtNum(lookupResult.price.volume_24h)],["LIQUIDITY",fmtNum(lookupResult.price.liquidity_usd)],["MKT CAP",fmtNum(lookupResult.price.market_cap)]].map(([l,v])=>(
+          {lookupResult.price&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
+            {[["VOL 24H",fmtNum(lookupResult.price.volume_24h)],["LIQUIDITY",fmtNum(lookupResult.price.liquidity_usd)],["MKT CAP",fmtNum(lookupResult.price.market_cap)],["FIB",`${lookupResult.price.fib_signal?.signal||"—"} ${lookupResult.price.fib_signal?.confidence||0}%`]].map(([l,v])=>(
               <div key={l} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px"}}>
                 <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:2}}>{l}</div>
                 <div style={{fontSize:14,fontWeight:600,color:"#99bbcc"}}>{v}</div>

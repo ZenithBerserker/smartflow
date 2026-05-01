@@ -4,6 +4,7 @@
 // Requires: BIRDEYE_API_KEY and GEMINI_API_KEY in Vercel environment variables
 import fs from "fs";
 import path from "path";
+import { getTokenMeta } from "../../lib/tokens";
 
 let rootEnvCache;
 
@@ -52,26 +53,12 @@ export default async function handler(req, res) {
     });
   }
 
-  // Known contract addresses for quick lookup
-  const CONTRACTS = {
-    PEPE:  { chain: "ethereum", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" },
-    WIF:   { chain: "solana",   address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm" },
-    BONK:  { chain: "solana",   address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
-    TURBO: { chain: "ethereum", address: "0xA35923162C49cF95e6BF26623385eb431ad920D3" },
-    FLOKI: { chain: "ethereum", address: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E" },
-    SHIB:  { chain: "ethereum", address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE" },
-    ARB:   { chain: "ethereum", address: "0x912CE59144191C1204E64559FE8253a0e49E6548" },
-    LINK:  { chain: "ethereum", address: "0x514910771AF9Ca656af840dff83E8264EcF986CA" },
-    INJ:   { chain: "ethereum", address: "0xe28b3B32B6c345A34Ff64674606124Dd5Aceca30" },
-    SOL:   { chain: "solana",   address: "So11111111111111111111111111111111111111112" },
-  };
-
   try {
     // ── Step 1: Get contract address ─────────────────────────────────────────
     let contractAddress, chain;
-    const known = CONTRACTS[ticker];
+    const known = getTokenMeta(ticker);
 
-    if (known) {
+    if (known?.address) {
       contractAddress = known.address;
       chain = known.chain;
     } else {
