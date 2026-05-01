@@ -73,10 +73,11 @@ export default function Home() {
     fetchPrice(selected);
   },[selected]);
 
-  const fetchPrice=async(ticker)=>{
+  const fetchPrice=async(ticker, timeframe)=>{
     setPriceLoading(true);
+    const tf = timeframe || chartTf;
     try{
-      const r=await fetch(`/api/price?ticker=${ticker}`);
+      const r=await fetch(`/api/price?ticker=${ticker}&tf=${tf}`);
       const d=await r.json();
       setPriceData(d);
     }catch(e){ console.error(e); }
@@ -289,9 +290,9 @@ export default function Home() {
               <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>PRICE CHART — {selected} / USD</div>
               <div style={{display:"flex",gap:4}}>
                 {["1h","4h","24h"].map(tf=>(
-                  <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>setChartTf(tf)}>{tf}</button>
+                  <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button onClick={()=>fetchPrice(selected)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
+                <button onClick={()=>fetchPrice(selected,chartTf)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
             </div>
             <canvas ref={chartRef} width={600} height={200} style={{width:"100%",height:"200px",display:"block"}}/>
