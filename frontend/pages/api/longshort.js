@@ -43,17 +43,17 @@ export default async function handler(req, res) {
 
   try {
     const feeds = await Promise.allSettled([
-      fetchBinance("global accounts", `/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=24`),
-      fetchBinance("top positions", `/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=1h&limit=24`),
-      fetchBinance("taker flow", `/futures/data/takerlongshortRatio?symbol=${symbol}&period=1h&limit=24`),
+      fetchBinanceArray("global accounts", `/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=24`),
+      fetchBinanceArray("top positions", `/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=1h&limit=24`),
+      fetchBinanceObject("funding rate", `/fapi/v1/premiumIndex?symbol=${symbol}`),
     ]);
-    const [account, position, taker] = feeds.map((feed) => feed.status === "fulfilled" ? feed.value : []);
+    const [account, position, funding] = feeds.map((feed, index) => feed.status === "fulfilled" ? feed.value : (index === 2 ? null : []));
     const feedErrors = feeds
       .filter((feed) => feed.status === "rejected")
       .map((feed) => feed.reason?.message)
       .filter(Boolean);
 
-    if (!account.length && !position.length && !taker.length) {
+    if (!account.length && !position.length && !funding) {
       return res.status(200).json({
         ticker,
         symbol,
@@ -68,15 +68,14 @@ export default async function handler(req, res) {
 
     const latestAccount = last(account);
     const latestPosition = last(position);
-    const latestTaker = last(taker);
     const accountRatio = num(latestAccount?.longShortRatio);
     const topPositionRatio = num(latestPosition?.longShortRatio);
-    const takerRatio = num(latestTaker?.buySellRatio);
     const accountLongPct = longPctFromAccountRow(latestAccount);
     const topLongPct = longPctFromAccountRow(latestPosition);
-    const takerBuyPct = takerBuyPctFromRow(latestTaker);
+    const fundingRatePct = fundingRatePctFromRow(funding);
+    const fundingBiasPct = fundingBiasPctFromRate(fundingRatePct);
     const avgAccountLong = average(account.map(longPctFromAccountRow).filter(Number.isFinite));
-    const biasScoreRaw = average([accountLongPct, topLongPct, takerBuyPct].filter(Number.isFinite));
+    const biasScoreRaw = average([accountLongPct, topLongPct, fundingBiasPct].filter(Number.isFinite));
     const biasScore = Number.isFinite(biasScoreRaw) ? Math.round(biasScoreRaw) : null;
     const accountTrend = Number.isFinite(accountLongPct) && Number.isFinite(avgAccountLong)
       ? Math.round((accountLongPct - avgAccountLong) * 10) / 10
@@ -98,7 +97,9 @@ export default async function handler(req, res) {
       account_long_pct: round(accountLongPct),
       account_short_pct: round(shortPctFromLongPct(accountLongPct)),
       top_position_long_pct: round(topLongPct),
-      taker_buy_pct: round(takerBuyPct),
+      funding_rate_pct: round(fundingRatePct, 4),
+      funding_bias_pct: round(fundingBiasPct),
+      next_funding_time: Number.isFinite(Number(funding?.nextFundingTime)) ? Number(funding.nextFundingTime) : null,
       long_short_ratio: round(accountRatio, 3),
       account_trend_pct: accountTrend,
       rows: account.slice(-12).map((row) => ({
@@ -111,7 +112,7 @@ export default async function handler(req, res) {
       feed_status: {
         account: account.length > 0,
         top_position: position.length > 0,
-        taker: taker.length > 0,
+        funding: Boolean(funding),
       },
       reason: feedErrors.length ? `Partial Binance data: ${feedErrors.join("; ")}` : undefined,
       timestamp: Date.now(),
@@ -128,17 +129,26 @@ export default async function handler(req, res) {
   }
 }
 
-async function fetchBinance(label, path) {
+async function fetchBinanceData(label, path) {
   const res = await fetch(`https://fapi.binance.com${path}`, {
     headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${label} request failed (${res.status})${body ? `: ${body.slice(0, 140)}` : ""}`);
   }
-  const data = await res.json();
+  return res.json();
+}
+
+async function fetchBinanceArray(label, path) {
+  const data = await fetchBinanceData(label, path);
   return Array.isArray(data) ? data : [];
+}
+
+async function fetchBinanceObject(label, path) {
+  const data = await fetchBinanceData(label, path);
+  return data && !Array.isArray(data) ? data : null;
 }
 
 function longPctFromAccountRow(row) {
@@ -149,14 +159,14 @@ function longPctFromAccountRow(row) {
   return pctFromRatio(num(row?.longShortRatio));
 }
 
-function takerBuyPctFromRow(row) {
-  const ratioPct = pctFromRatio(num(row?.buySellRatio));
-  if (Number.isFinite(ratioPct)) return ratioPct;
+function fundingRatePctFromRow(row) {
+  const rate = num(row?.lastFundingRate);
+  return Number.isFinite(rate) ? rate * 100 : NaN;
+}
 
-  const buyVol = num(row?.buyVol);
-  const sellVol = num(row?.sellVol);
-  if (!Number.isFinite(buyVol) || !Number.isFinite(sellVol) || buyVol + sellVol <= 0) return NaN;
-  return (buyVol / (buyVol + sellVol)) * 100;
+function fundingBiasPctFromRate(ratePct) {
+  if (!Number.isFinite(ratePct)) return NaN;
+  return Math.max(0, Math.min(100, 50 + ratePct * 1000));
 }
 
 function pctFromRatio(ratio) {

@@ -61,9 +61,9 @@ export function LongShortPanel({ data, loading, onRefresh }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
             {[
               ["SIGNAL", data.signal, signalColor],
-              ["LONGS", `${data.account_long_pct}%`, "#00ff88"],
-              ["SHORTS", `${data.account_short_pct}%`, "#ff4466"],
-              ["TAKER BUY", `${data.taker_buy_pct ?? "--"}%`, "#00cfff"],
+              ["LONGS", formatPct(data.account_long_pct), "#00ff88"],
+              ["SHORTS", formatPct(data.account_short_pct), "#ff4466"],
+              ["FUNDING", `${formatFundingRate(data.funding_rate_pct)}`, fundingColor(data.funding_rate_pct)],
             ].map(([label, value, color]) => (
               <div key={label} style={{ background: "#070a0f", border: "1px solid #0d2030", borderRadius: 6, padding: "8px 10px" }}>
                 <div style={{ fontSize: 9, color: "#335566", fontFamily: "'Share Tech Mono',monospace", marginBottom: 3 }}>{label}</div>
@@ -83,6 +83,19 @@ export function LongShortPanel({ data, loading, onRefresh }) {
       )}
       </div>
   );
+}
+
+function formatPct(value) {
+  return Number.isFinite(value) ? `${value}%` : "--";
+}
+
+function formatFundingRate(value) {
+  return Number.isFinite(value) ? `${value > 0 ? "+" : ""}${value.toFixed(4)}%` : "--";
+}
+
+function fundingColor(value) {
+  if (!Number.isFinite(value)) return "#00cfff";
+  return value > 0 ? "#00ff88" : value < 0 ? "#ff4466" : "#00cfff";
 }
 
 export function ChainBadge({ chain }) {
