@@ -18,7 +18,8 @@ export default function Home() {
   const [lookupResult,setLookupResult]=useState(null);
   const [lookupLoading,setLookupLoading]=useState(false);
   const [newTokens,setNewTokens]=useState([]);
-  const [mentionChanges,setMentionChanges]=useState({});
+  const [mentionData,setMentionData]=useState(null);
+  const [mentionLoading,setMentionLoading]=useState(false);
   const [priceData,setPriceData]=useState(null);
   const [priceLoading,setPriceLoading]=useState(false);
   const [longShortData,setLongShortData]=useState(null);
@@ -51,7 +52,6 @@ export default function Home() {
   },[]);
 
   useEffect(()=>{
-    setMentionChanges({});
     setResult(null);
     chartLinesRef.current=[];
     chartDraftRef.current=null;
@@ -59,6 +59,7 @@ export default function Home() {
     setChartRevision(v=>v+1);
     fetchPrice(selected);
     fetchLongShort(selected);
+    fetchMentions(selected);
   },[selected]);
 
   useEffect(()=>{
@@ -91,6 +92,29 @@ export default function Home() {
       addLog(`long/short error: ${e.message}`);
     }
     setLongShortLoading(false);
+  };
+
+  const fetchMentions=async(ticker, force=false)=>{
+    setMentionLoading(true);
+    try{
+      const r=await fetch(`/api/mentions${force?"?force=1":""}`);
+      const d=await r.json();
+      const normalized=ticker.toUpperCase();
+      const sourceCounts=Object.fromEntries((d.sources||[]).map(source=>[source.source, source.counts?.[normalized]||0]));
+      setMentionData({
+        ticker: normalized,
+        total: d.counts?.[normalized]||0,
+        source_counts: sourceCounts,
+        sources: d.sources||[],
+        source: d.source,
+        timestamp: d.timestamp,
+        error: d.error,
+      });
+    }catch(e){
+      setMentionData({ticker:ticker.toUpperCase(),total:0,source_counts:{},error:e.message});
+      addLog(`mentions error: ${e.message}`);
+    }
+    setMentionLoading(false);
   };
 
   // Draw candlestick chart using canvas
@@ -303,10 +327,25 @@ export default function Home() {
         fetch(`/api/price?ticker=${lookupQuery.trim().toUpperCase()}`),
       ]);
       const [pipeData,priceD]=await Promise.all([pipeRes.json(),priceRes.json()]);
-      setLookupResult({...pipeData,changes:{},price:priceD});
+      const liveMentions=await fetchMentionsForTicker(lookupQuery.trim().toUpperCase(),true);
+      setLookupResult({...pipeData,changes:{},mentions:liveMentions,price:priceD});
       addLog(`lookup done: ${lookupQuery.toUpperCase()} — ${pipeData.signal?.signal||"no signal"}`);
     }catch(e){ addLog(`lookup error: ${e.message}`); }
     setLookupLoading(false);
+  };
+
+  const fetchMentionsForTicker=async(ticker, force=false)=>{
+    const r=await fetch(`/api/mentions${force?"?force=1":""}`);
+    const d=await r.json();
+    const normalized=ticker.toUpperCase();
+    return {
+      ticker: normalized,
+      total: d.counts?.[normalized]||0,
+      source_counts: Object.fromEntries((d.sources||[]).map(source=>[source.source, source.counts?.[normalized]||0])),
+      timestamp: d.timestamp,
+      source: d.source,
+      error: d.error,
+    };
   };
 
   const getStep=(n)=>result?.steps?.find(s=>s.name===n);
@@ -491,20 +530,28 @@ export default function Home() {
 
         {/* Mention velocity */}
         <div className="mention-panel" style={{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"12px 16px",marginBottom:12}}>
-          <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:10}}>MENTION VELOCITY — {selected}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
+            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em"}}>LIVE MENTIONS — {selected}</div>
+            <button onClick={()=>fetchMentions(selected,true)} disabled={mentionLoading} style={{padding:"4px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#446688",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:mentionLoading?"not-allowed":"pointer",borderRadius:3}}>refresh</button>
+          </div>
           <div className="mention-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-            {[["4h",mentionChanges["4h"]],["24h",mentionChanges["24h"]],["7d",mentionChanges["7d"]]].map(([tf,val])=>(
-              <div key={tf} style={{textAlign:"center"}}>
-                <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>{tf}</div>
-                <div className="mention-value" style={{fontSize:24,fontWeight:700,color:val>100?"#00ff88":val>30?"#00cfff":val>0?"#99ccdd":"#446688",textShadow:val>100?"0 0 10px #00ff8866":val>0?"0 0 6px #00cfff33":"none"}}>
-                  {val===undefined?"—":`${val>0?"+":""}${val}%`}
+            {[
+              ["TOTAL",mentionData?.total],
+              ["REDDIT",mentionData?.source_counts?.reddit],
+              ["4CHAN",mentionData?.source_counts?.["4chan_biz"]],
+            ].map(([label,val])=>(
+              <div key={label} style={{textAlign:"center"}}>
+                <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>{label}</div>
+                <div className="mention-value" style={{fontSize:24,fontWeight:700,color:val>10?"#00ff88":val>0?"#00cfff":"#446688",textShadow:val>10?"0 0 10px #00ff8866":val>0?"0 0 6px #00cfff33":"none"}}>
+                  {mentionLoading?"…":val===undefined?"—":val}
                 </div>
                 <div style={{height:2,background:"#0d2030",borderRadius:1,marginTop:6,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${val===undefined?0:Math.min(100,Math.max(0,val))}%`,background:val>100?"#00ff88":val>0?"#00cfff":"#446688",borderRadius:1,transition:"width .4s ease"}}/>
+                  <div style={{height:"100%",width:`${val===undefined?0:Math.min(100,Math.max(0,val*5))}%`,background:val>10?"#00ff88":val>0?"#00cfff":"#446688",borderRadius:1,transition:"width .4s ease"}}/>
                 </div>
               </div>
             ))}
           </div>
+          {mentionData?.error&&<div style={{fontSize:10,color:"#ff4466",fontFamily:"'Share Tech Mono',monospace",marginTop:8}}>{mentionData.error}</div>}
         </div>
 
         {/* Metric cards */}
@@ -638,10 +685,10 @@ export default function Home() {
             ))}
           </div>}
           <div className="lookup-mentions" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
-            {[["4h",lookupResult.changes?.["4h"]],["24h",lookupResult.changes?.["24h"]],["7d",lookupResult.changes?.["7d"]]].map(([tf,val])=>(
-              <div key={tf} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
-                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>MENTIONS {tf}</div>
-                <div style={{fontSize:20,fontWeight:700,color:val>50?"#00ff88":val>0?"#00cfff":"#446688"}}>{val===undefined?"—":`${val>0?"+":""}${val}%`}</div>
+            {[["TOTAL",lookupResult.mentions?.total],["REDDIT",lookupResult.mentions?.source_counts?.reddit],["4CHAN",lookupResult.mentions?.source_counts?.["4chan_biz"]]].map(([label,val])=>(
+              <div key={label} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>MENTIONS {label}</div>
+                <div style={{fontSize:20,fontWeight:700,color:val>10?"#00ff88":val>0?"#00cfff":"#446688"}}>{val===undefined?"—":val}</div>
               </div>
             ))}
           </div>

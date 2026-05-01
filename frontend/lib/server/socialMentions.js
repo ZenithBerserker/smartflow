@@ -47,9 +47,9 @@ export async function getLiveMentions({ force = false } = {}) {
 async function collectLiveMentions() {
   const now = Date.now();
   const sources = await Promise.allSettled([
-    withTimeout(scrapeFourChan(), 8000, "4chan_biz"),
-    withTimeout(scrapeReddit(), 8000, "reddit"),
-    withTimeout(scrapeTelegram(), 8000, "telegram"),
+    withTimeout(scrapeFourChan(), 5000, "4chan_biz"),
+    withTimeout(scrapeReddit(), 5000, "reddit"),
+    withTimeout(scrapeTelegram(), 5000, "telegram"),
   ]);
 
   const sourceResults = sources.map((result, i) => {
