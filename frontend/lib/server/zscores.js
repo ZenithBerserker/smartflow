@@ -30,17 +30,15 @@ function getEnv(name) {
   return rootEnvCache[name];
 }
 
-export function getMockZscores() {
-  const base = { PEPE: 1.8, WIF: 2.1, BONK: 1.4, TURBO: 3.1, FLOKI: 1.6, DOGE: 0.9, SHIB: 1.1, SOL: 2.3, ETH: 0.7, BTC: 0.6, ARB: 1.9, LINK: 1.2, INJ: 2.6, TIA: 1.5, OP: 1.7, AVAX: 1.4, MATIC: 1.2, UNI: 1.1, AAVE: 1.3, JUP: 2.4, PYTH: 2.0, RENDER: 2.2, FET: 2.1, SUI: 1.9, APT: 1.6, NEAR: 1.8, ATOM: 1.0, RUNE: 1.7, SEI: 2.0, ENA: 2.3, LDO: 1.4, PENDLE: 2.2, ONDO: 2.1, JTO: 1.9 };
+export function getUnavailableZscores() {
   return TICKERS.map((ticker) => {
-    const z = base[ticker] || 1.0;
     return {
-    ticker,
-    zscore: Math.round((z + Math.random() * 0.3 - 0.15) * 100) / 100,
-    mentions_1h: Math.round(z * 45 + Math.random() * 30),
-    alert: z > 2.0,
-    chain: ["SOL", "WIF", "BONK"].includes(ticker) ? "solana" : "ethereum",
-  };
+      ticker,
+      zscore: 0,
+      mentions_1h: 0,
+      alert: false,
+      chain: getChain(ticker),
+    };
   });
 }
 
@@ -50,8 +48,8 @@ export async function getZscores() {
 
   if (!supabaseUrl || !supabaseKey) {
     return {
-      tickers: getMockZscores(),
-      source: "mock",
+      tickers: getUnavailableZscores(),
+      source: "unavailable",
       reason: "SUPABASE_URL or SUPABASE_KEY not set",
     };
   }
@@ -70,8 +68,8 @@ export async function getZscores() {
 
     if (!data || data.length === 0) {
       return {
-        tickers: getMockZscores(),
-        source: "mock",
+        tickers: getUnavailableZscores(),
+        source: "unavailable",
         reason: "No mention data found in Supabase",
       };
     }
@@ -102,8 +100,8 @@ export async function getZscores() {
     return { tickers: results, source: "supabase" };
   } catch (e) {
     return {
-      tickers: getMockZscores(),
-      source: "mock",
+      tickers: getUnavailableZscores(),
+      source: "unavailable",
       reason: e.message,
     };
   }
@@ -115,10 +113,10 @@ export async function getZscoreForTicker(ticker) {
   const row = data.tickers.find((item) => item.ticker === normalized);
   if (row) return { ...row, source: data.source, reason: data.reason };
 
-  const fallback = getMockZscores().find((item) => item.ticker === normalized) || {
+  const fallback = getUnavailableZscores().find((item) => item.ticker === normalized) || {
     ticker: normalized,
-    zscore: 1,
-    mentions_1h: 45,
+    zscore: 0,
+    mentions_1h: 0,
     alert: false,
     chain: getChain(normalized),
   };

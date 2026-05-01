@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     price_change_24h: Math.round(priceChange24h * 100) / 100,
     volume_24h_usd: Math.round(priceData?.volume_24h || 0),
     price_usd: priceData?.price_usd || 0,
-    source: priceData?.mock ? "mock" : "dexscreener",
+    source: priceData?.dex || priceData?.candle_source || "unavailable",
     passed: rsi > 40 && rsi < 75 && obvSignal === "rising" && priceChange1h > 0,
   };
 
@@ -75,12 +75,12 @@ export default async function handler(req, res) {
     walletData = await walletsRes.json();
   } catch (e) {
     console.error("[pipeline] Wallet fetch failed:", e.message);
-    walletData = { wallets: getMockWallets(), smart_count: 4, smart_ratio: 0.67, source: "mock" };
+    walletData = { wallets: [], smart_count: 0, smart_ratio: 0, source: "unavailable", reason: e.message };
   }
 
   const step3 = {
     step: 3, name: "wallet_analysis",
-    wallets_analyzed: walletData.wallets?.length || 6,
+    wallets_analyzed: walletData.wallets?.length || 0,
     smart_money_count: walletData.smart_count || 0,
     smart_money_ratio: walletData.smart_ratio || 0,
     smart_money_threshold: 0.5,
@@ -130,15 +130,4 @@ function buildSignal(ticker, s1, s2, s3) {
     reason: "Failed: " + failed.join("; "),
     passed: false,
   };
-}
-
-function getMockWallets() {
-  return [
-    { wallet_address: "0x3aF7...b291", win_rate_percentage: 78, total_realized_pnl_usd: 842000,  total_trades: 234, risk_classification: "Moderate",     is_smart_money: true  },
-    { wallet_address: "0x1c9E...d047", win_rate_percentage: 71, total_realized_pnl_usd: 1240000, total_trades: 189, risk_classification: "Aggressive",   is_smart_money: true  },
-    { wallet_address: "4xKmP...qR2s", win_rate_percentage: 64, total_realized_pnl_usd: 390000,  total_trades: 412, risk_classification: "Degenerate",   is_smart_money: false },
-    { wallet_address: "0x82bD...f3A1", win_rate_percentage: 69, total_realized_pnl_usd: 670000,  total_trades: 301, risk_classification: "Moderate",     is_smart_money: true  },
-    { wallet_address: "9wLqT...mN5j", win_rate_percentage: 55, total_realized_pnl_usd: 88000,   total_trades: 567, risk_classification: "Aggressive",   is_smart_money: false },
-    { wallet_address: "0xE4c2...7e9F", win_rate_percentage: 82, total_realized_pnl_usd: 2100000, total_trades: 98,  risk_classification: "Conservative", is_smart_money: true  },
-  ];
 }

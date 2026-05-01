@@ -7,22 +7,6 @@ import { TRACKED_TICKERS } from "../lib/tokens";
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
 const FIB_COLORS = { BUY:"#00ff88", SELL:"#ff4466", NEUTRAL:"#00cfff" };
 
-function getMockNewTokens() {
-  return [
-    {name:"WOJAK",chain:"ETH",age:"2h",liquidity:"$48K",volume_1h:"$124K",mentions_1h:312,zscore:3.8,price_change_1h:142},
-    {name:"GIGA",chain:"SOL",age:"5h",liquidity:"$92K",volume_1h:"$341K",mentions_1h:187,zscore:2.9,price_change_1h:67},
-    {name:"HARAMBE",chain:"ETH",age:"12h",liquidity:"$31K",volume_1h:"$89K",mentions_1h:98,zscore:2.4,price_change_1h:34},
-    {name:"SIGMA",chain:"SOL",age:"1h",liquidity:"$12K",volume_1h:"$44K",mentions_1h:421,zscore:4.1,price_change_1h:389},
-    {name:"CHAD",chain:"BASE",age:"8h",liquidity:"$67K",volume_1h:"$198K",mentions_1h:145,zscore:2.2,price_change_1h:28},
-  ];
-}
-
-function getMockMentionChanges(ticker) {
-  const s = ticker.charCodeAt(0)*7+(ticker.charCodeAt(1)||3)*13;
-  const r=(min,max,x)=>Math.round(min+((s*x*9301+49297)%233280)/233280*(max-min));
-  return {"4h":r(-30,280,1),"24h":r(-20,180,2),"7d":r(-10,120,3)};
-}
-
 export default function Home() {
   const [selected,setSelected]=useState("TURBO");
   const [zscores,setZscores]=useState([]);
@@ -33,15 +17,21 @@ export default function Home() {
   const [lookupQuery,setLookupQuery]=useState("");
   const [lookupResult,setLookupResult]=useState(null);
   const [lookupLoading,setLookupLoading]=useState(false);
-  const [newTokens]=useState(getMockNewTokens());
+  const [newTokens,setNewTokens]=useState([]);
   const [mentionChanges,setMentionChanges]=useState({});
   const [priceData,setPriceData]=useState(null);
   const [priceLoading,setPriceLoading]=useState(false);
   const [walletData,setWalletData]=useState(null);
   const [walletLoading,setWalletLoading]=useState(false);
   const [chartTf,setChartTf]=useState("24h");
+  const [chartDrawMode,setChartDrawMode]=useState(false);
+  const [chartRevision,setChartRevision]=useState(0);
   const logRef=useRef(null);
   const chartRef=useRef(null);
+  const chartGeomRef=useRef(null);
+  const chartHoverRef=useRef(null);
+  const chartLinesRef=useRef([]);
+  const chartDraftRef=useRef(null);
 
   const addLog=useCallback((msg)=>{
     const ts=new Date().toLocaleTimeString("en-US",{hour12:false});
@@ -56,11 +46,27 @@ export default function Home() {
   },[]);
 
   useEffect(()=>{
-    setMentionChanges(getMockMentionChanges(selected));
+    const f=async()=>{ try{ const r=await fetch("/api/discover"); const d=await r.json(); setNewTokens(d.tokens||[]); }catch{} };
+    f(); const iv=setInterval(f,60000); return()=>clearInterval(iv);
+  },[]);
+
+  useEffect(()=>{
+    setMentionChanges({});
     setResult(null);
+    chartLinesRef.current=[];
+    chartDraftRef.current=null;
+    chartHoverRef.current=null;
+    setChartRevision(v=>v+1);
     fetchPrice(selected);
     fetchWallets(selected);
   },[selected]);
+
+  useEffect(()=>{
+    chartLinesRef.current=[];
+    chartDraftRef.current=null;
+    chartHoverRef.current=null;
+    setChartRevision(v=>v+1);
+  },[chartTf]);
 
   const fetchPrice=async(ticker, timeframe)=>{
     setPriceLoading(true);
@@ -93,20 +99,29 @@ export default function Home() {
     // Small delay to ensure DOM is laid out
     const timer = setTimeout(drawChart, 50);
     return () => clearTimeout(timer);
-  },[priceData,chartTf]);
+  },[priceData,chartTf,chartRevision,chartDrawMode]);
 
   const drawChart = () => {
     if(!priceData?.candles||!chartRef.current) return;
     const canvas=chartRef.current;
     const dpr=window.devicePixelRatio||1;
     const W=canvas.parentElement?.offsetWidth||600;
-    const H=200;
+    const H=parseInt(getComputedStyle(canvas).height,10)||200;
     canvas.width=W*dpr; canvas.height=H*dpr;
     canvas.style.width=W+"px"; canvas.style.height=H+"px";
     const ctx=canvas.getContext("2d");
     ctx.scale(dpr,dpr);
 
     const candles=priceData.candles;
+    if(candles.length===0){
+      ctx.fillStyle="#070a0f";
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="#335566";
+      ctx.font="11px 'Share Tech Mono',monospace";
+      ctx.textAlign="center";
+      ctx.fillText("live candle data unavailable",W/2,H/2);
+      return;
+    }
     const pad={top:16,right:60,bottom:28,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
 
@@ -115,7 +130,10 @@ export default function Home() {
     const range=maxP-minP||maxP*0.01;
 
     const toY=p=>pad.top+ch-(((p-minP)/range)*ch);
+    const toX=i=>pad.left+(i/candles.length)*cw+(cw/candles.length)*0.5;
+    const priceFromY=y=>maxP-(((y-pad.top)/ch)*(maxP-minP));
     const candleW=Math.max(2,(cw/candles.length)*0.65);
+    chartGeomRef.current={W,H,pad,cw,ch,minP,maxP,toX,toY,priceFromY,candleCount:candles.length};
 
     // Background grid
     ctx.fillStyle="#070a0f";
@@ -134,7 +152,7 @@ export default function Home() {
 
     // Candles
     candles.forEach((c,i)=>{
-      const x=pad.left+(i/candles.length)*cw+(cw/candles.length)*0.5;
+      const x=toX(i);
       const isGreen=c.c>=c.o;
       const color=isGreen?"#00ff88":"#ff4466";
       const glow=isGreen?"#00ff8844":"#ff446644";
@@ -154,17 +172,113 @@ export default function Home() {
 
     ctx.shadowBlur=0;
 
+    // User drawings
+    const drawLine=(line,isDraft=false)=>{
+      const x1=toX(line.i1), y1=toY(line.p1), x2=toX(line.i2), y2=toY(line.p2);
+      ctx.strokeStyle=isDraft?"#ffaa00":"#00cfff";
+      ctx.lineWidth=isDraft?1:1.5;
+      ctx.setLineDash(isDraft?[4,4]:[]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle=isDraft?"#ffaa00":"#00cfff";
+      [[x1,y1],[x2,y2]].forEach(([x,y])=>{ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
+    };
+    chartLinesRef.current.forEach(line=>drawLine(line,false));
+    if(chartDraftRef.current) drawLine(chartDraftRef.current,true);
+
+    // Hover crosshair and tooltip
+    const hover=chartHoverRef.current;
+    if(hover&&hover.index>=0&&hover.index<candles.length){
+      const c=candles[hover.index];
+      const x=toX(hover.index), y=toY(c.c);
+      ctx.strokeStyle="#446688";
+      ctx.lineWidth=0.75;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,H-pad.bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
+      ctx.setLineDash([]);
+
+      const d=new Date(c.t);
+      const lines=[
+        d.toLocaleString(undefined,{month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit"}),
+        `O ${fmtPrice(c.o)}  H ${fmtPrice(c.h)}`,
+        `L ${fmtPrice(c.l)}  C ${fmtPrice(c.c)}`,
+        `V ${fmtNum(c.v)}`,
+      ];
+      const boxW=178, boxH=68;
+      const boxX=Math.min(Math.max(hover.x+12,8),W-boxW-8);
+      const boxY=Math.min(Math.max(hover.y-10,8),H-boxH-8);
+      ctx.fillStyle="#070a0fee";
+      ctx.strokeStyle="#1a2a3a";
+      ctx.lineWidth=1;
+      ctx.fillRect(boxX,boxY,boxW,boxH);
+      ctx.strokeRect(boxX,boxY,boxW,boxH);
+      ctx.font="10px 'Share Tech Mono',monospace";
+      ctx.textAlign="left";
+      lines.forEach((line,i)=>{
+        ctx.fillStyle=i===0?"#00cfff":"#99bbcc";
+        ctx.fillText(line,boxX+8,boxY+16+i*13);
+      });
+    }
+
     // Time labels
     ctx.fillStyle="#335566";
     ctx.font="9px 'Share Tech Mono',monospace";
     ctx.textAlign="center";
-    const step=Math.floor(candles.length/6);
+    const step=Math.max(1,Math.floor(candles.length/6));
     for(let i=0;i<candles.length;i+=step){
-      const x=pad.left+(i/candles.length)*cw+(cw/candles.length)*0.5;
+      const x=toX(i);
       const d=new Date(candles[i].t);
-      ctx.fillText(d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),x,H-8);
+      ctx.fillText(`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`,x,H-8);
     }
     };
+
+  const getCanvasPoint=(event)=>{
+    const canvas=chartRef.current;
+    const geom=chartGeomRef.current;
+    if(!canvas||!geom||!priceData?.candles?.length) return null;
+    const rect=canvas.getBoundingClientRect();
+    const x=event.clientX-rect.left;
+    const y=event.clientY-rect.top;
+    const raw=((x-geom.pad.left)/geom.cw)*priceData.candles.length;
+    const index=Math.min(priceData.candles.length-1,Math.max(0,Math.floor(raw)));
+    const price=geom.priceFromY(Math.min(geom.H-geom.pad.bottom,Math.max(geom.pad.top,y)));
+    return {x,y,index,price};
+  };
+
+  const handleChartMove=(event)=>{
+    const point=getCanvasPoint(event);
+    if(!point) return;
+    chartHoverRef.current=point;
+    if(chartDraftRef.current){
+      chartDraftRef.current={...chartDraftRef.current,i2:point.index,p2:point.price};
+    }
+    drawChart();
+  };
+
+  const handleChartLeave=()=>{
+    chartHoverRef.current=null;
+    if(!chartDraftRef.current) drawChart();
+  };
+
+  const handleChartClick=(event)=>{
+    if(!chartDrawMode) return;
+    const point=getCanvasPoint(event);
+    if(!point) return;
+    if(!chartDraftRef.current){
+      chartDraftRef.current={i1:point.index,p1:point.price,i2:point.index,p2:point.price};
+    }else{
+      chartLinesRef.current=[...chartLinesRef.current,{...chartDraftRef.current,i2:point.index,p2:point.price}];
+      chartDraftRef.current=null;
+    }
+    setChartRevision(v=>v+1);
+  };
+
+  const clearChartDrawings=()=>{
+    chartLinesRef.current=[];
+    chartDraftRef.current=null;
+    setChartRevision(v=>v+1);
+  };
 
   const runPipeline=async()=>{
     if(loading)return; setLoading(true); setResult(null); addLog(`initiating pipeline for ${selected}...`);
@@ -189,7 +303,7 @@ export default function Home() {
         fetch(`/api/price?ticker=${lookupQuery.trim().toUpperCase()}`),
       ]);
       const [pipeData,priceD]=await Promise.all([pipeRes.json(),priceRes.json()]);
-      setLookupResult({...pipeData,changes:getMockMentionChanges(lookupQuery),price:priceD});
+      setLookupResult({...pipeData,changes:{},price:priceD});
       addLog(`lookup done: ${lookupQuery.toUpperCase()} — ${pipeData.signal?.signal||"no signal"}`);
     }catch(e){ addLog(`lookup error: ${e.message}`); }
     setLookupLoading(false);
@@ -235,7 +349,7 @@ export default function Home() {
       .price-stat-grid{gap:5px!important}
       .chart-panel{padding:9px 10px!important}
       .chart-header{align-items:flex-start!important;gap:8px!important;flex-direction:column!important;margin-bottom:6px!important}
-      .chart-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:5px!important}
+      .chart-controls{width:100%!important;display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:5px!important}
       .tf-btn,.refresh-btn{width:100%!important;padding:6px 0!important;font-size:10px!important}
       .chart-canvas{height:170px!important}
       .mention-panel{padding:10px 11px!important;margin-bottom:10px!important}
@@ -358,10 +472,21 @@ export default function Home() {
                 {["1h","4h","24h"].map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
+                <button className={`tf-btn${chartDrawMode?" active":""}`} onClick={()=>setChartDrawMode(v=>!v)}>line</button>
+                <button className="tf-btn" onClick={clearChartDrawings}>clear</button>
                 <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
             </div>
-            <canvas className="chart-canvas" ref={chartRef} width={600} height={200} style={{width:"100%",height:"200px",display:"block"}}/>
+            <canvas
+              className="chart-canvas"
+              ref={chartRef}
+              width={600}
+              height={200}
+              onMouseMove={handleChartMove}
+              onMouseLeave={handleChartLeave}
+              onClick={handleChartClick}
+              style={{width:"100%",height:"200px",display:"block",cursor:chartDrawMode?"crosshair":"default"}}
+            />
           </div>
         </div>
 
@@ -372,11 +497,11 @@ export default function Home() {
             {[["4h",mentionChanges["4h"]],["24h",mentionChanges["24h"]],["7d",mentionChanges["7d"]]].map(([tf,val])=>(
               <div key={tf} style={{textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>{tf}</div>
-                <div className="mention-value" style={{fontSize:24,fontWeight:700,color:val>100?"#00ff88":val>30?"#00cfff":val>0?"#99ccdd":"#ff4466",textShadow:val>100?"0 0 10px #00ff8866":val>0?"0 0 6px #00cfff33":"0 0 6px #ff446633"}}>
-                  {val>0?"+":""}{val}%
+                <div className="mention-value" style={{fontSize:24,fontWeight:700,color:val>100?"#00ff88":val>30?"#00cfff":val>0?"#99ccdd":"#446688",textShadow:val>100?"0 0 10px #00ff8866":val>0?"0 0 6px #00cfff33":"none"}}>
+                  {val===undefined?"—":`${val>0?"+":""}${val}%`}
                 </div>
                 <div style={{height:2,background:"#0d2030",borderRadius:1,marginTop:6,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${Math.min(100,Math.max(0,val))}%`,background:val>100?"#00ff88":val>0?"#00cfff":"#ff4466",borderRadius:1,transition:"width .4s ease"}}/>
+                  <div style={{height:"100%",width:`${val===undefined?0:Math.min(100,Math.max(0,val))}%`,background:val>100?"#00ff88":val>0?"#00cfff":"#446688",borderRadius:1,transition:"width .4s ease"}}/>
                 </div>
               </div>
             ))}
@@ -387,7 +512,7 @@ export default function Home() {
         <div className="metric-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
           <NCard label="Z-SCORE" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"⚡ anomalous":"7d rolling"} accent={s1?.passed?"green":null}/>
           <NCard label="MENTIONS/HR" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="4chan+reddit+tg"/>
-          <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.mock?"mock candles":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
+          <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.candle_source==="unavailable"?"candles unavailable":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
           <NCard label="OBV" value={liveObv?(liveObv==="rising"?"↑ rising":liveObv==="falling"?"↓ falling":"→ flat"):"—"} sub={priceData?.technicals?.buy_ratio!==undefined?`${Math.round(priceData.technicals.buy_ratio*100)}% buy ratio`:"live flow"} accent={liveObv==="rising"?"green":null}/>
           <NCard label="FIB SIGNAL" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/24h`:"multi timeframe"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
         </div>
@@ -457,11 +582,12 @@ export default function Home() {
 
       {/* ── DISCOVER ── */}
       {tab==="discover"&&<div>
-        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:14}}>NEW & TRENDING TOKENS — sorted by Z-score</div>
+        <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".1em",marginBottom:14}}>NEW & TRENDING TOKENS — live DEXScreener boosts</div>
         <div className="discover-table">
           <div className="discover-grid" style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"6px 12px",fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0d2030",marginBottom:4}}>
-            {["TOKEN","CHAIN","AGE","LIQUIDITY","VOL 1H","MENTIONS","Z-SCORE","1H"].map(h=><span key={h}>{h}</span>)}
+            {["TOKEN","CHAIN","AGE","LIQUIDITY","VOL 1H","MENTIONS","SOCIAL","1H"].map(h=><span key={h}>{h}</span>)}
           </div>
+          {newTokens.length===0&&<div style={{padding:"12px",fontSize:11,color:"#335566",fontFamily:"'Share Tech Mono',monospace",borderBottom:"1px solid #0a1520"}}>live discover data unavailable</div>}
           {newTokens.map((t,i)=>(
             <div className="discover-grid" key={i} style={{display:"grid",gridTemplateColumns:"80px 55px 45px 80px 80px 70px 70px 70px",gap:8,padding:"10px 12px",fontSize:12,borderBottom:"1px solid #0a1520",borderRadius:4,marginBottom:2,cursor:"pointer",background:t.zscore>3.5?"#00ff880a":"transparent",transition:"background .15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="#0d1f2e"}
@@ -469,11 +595,11 @@ export default function Home() {
               <span style={{fontWeight:700,color:"#c8d8e8",fontFamily:"'Share Tech Mono',monospace"}}>${t.name}</span>
               <span><ChainBadge chain={t.chain}/></span>
               <span style={{color:"#335566",fontSize:11}}>{t.age}</span>
-              <span style={{color:"#99bbcc"}}>{t.liquidity}</span>
-              <span style={{color:"#99bbcc"}}>{t.volume_1h}</span>
-              <span style={{color:"#00cfff"}}>{t.mentions_1h}</span>
-              <span style={{color:t.zscore>3?"#00ff88":t.zscore>2?"#00cfff":"#ffaa00",fontWeight:700,textShadow:t.zscore>3?"0 0 8px #00ff8866":"none"}}>Z {t.zscore.toFixed(1)}</span>
-              <span style={{color:"#00ff88",fontWeight:700}}>+{t.price_change_1h}%</span>
+              <span style={{color:"#99bbcc"}}>{fmtNum(t.liquidity)}</span>
+              <span style={{color:"#99bbcc"}}>{fmtNum(t.volume_1h)}</span>
+              <span style={{color:"#00cfff"}}>{t.mentions_1h ?? "—"}</span>
+              <span style={{color:"#446688",fontWeight:700}}>—</span>
+              <span style={{color:t.price_change_1h>=0?"#00ff88":"#ff4466",fontWeight:700}}>{t.price_change_1h>=0?"+":""}{t.price_change_1h?.toFixed(1)||"0.0"}%</span>
             </div>
           ))}
         </div>
@@ -516,7 +642,7 @@ export default function Home() {
             {[["4h",lookupResult.changes?.["4h"]],["24h",lookupResult.changes?.["24h"]],["7d",lookupResult.changes?.["7d"]]].map(([tf,val])=>(
               <div key={tf} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"8px 10px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:3}}>MENTIONS {tf}</div>
-                <div style={{fontSize:20,fontWeight:700,color:val>50?"#00ff88":val>0?"#00cfff":"#ff4466"}}>{val>0?"+":""}{val}%</div>
+                <div style={{fontSize:20,fontWeight:700,color:val>50?"#00ff88":val>0?"#00cfff":"#446688"}}>{val===undefined?"—":`${val>0?"+":""}${val}%`}</div>
               </div>
             ))}
           </div>

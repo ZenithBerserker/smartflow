@@ -40,15 +40,13 @@ export default async function handler(req, res) {
   const BIRDEYE_KEY = getEnv("BIRDEYE_API_KEY");
   const GEMINI_KEY  = getEnv("GEMINI_API_KEY");
 
-  // If no keys, return mock data so UI never breaks
   if (!BIRDEYE_KEY || !GEMINI_KEY) {
-    console.log("[wallets] Missing API keys — returning mock data");
     return res.status(200).json({
       ticker,
-      wallets: getMockWallets(),
-      smart_count: 4,
-      smart_ratio: 0.67,
-      source: "mock",
+      wallets: [],
+      smart_count: 0,
+      smart_ratio: 0,
+      source: "unavailable",
       reason: !BIRDEYE_KEY ? "BIRDEYE_API_KEY not set" : "GEMINI_API_KEY not set",
     });
   }
@@ -74,7 +72,7 @@ export default async function handler(req, res) {
         .sort((a, b) => parseFloat(b.liquidity?.usd || 0) - parseFloat(a.liquidity?.usd || 0))[0];
 
       if (!best) {
-        return res.status(200).json({ ticker, wallets: getMockWallets(), source: "mock", reason: "Token not found" });
+        return buildResponse(res, ticker, [], "unavailable", "Token not found");
       }
       contractAddress = best.baseToken.address;
       chain = best.chainId;
@@ -103,14 +101,14 @@ export default async function handler(req, res) {
 
     if (!tradersRes.ok) {
       console.error("[wallets] Birdeye error:", tradersRes.status, await tradersRes.text());
-      return res.status(200).json({ ticker, wallets: getMockWallets(), source: "mock", reason: `Birdeye error: ${tradersRes.status}` });
+      return buildResponse(res, ticker, [], "unavailable", `Birdeye error: ${tradersRes.status}`);
     }
 
     const tradersData = await tradersRes.json();
     const topTraders = normalizeTopTraders(tradersData);
 
     if (topTraders.length === 0) {
-      return res.status(200).json({ ticker, wallets: getMockWallets(), source: "mock", reason: "No trader data from Birdeye" });
+      return buildResponse(res, ticker, [], "unavailable", "No trader data from Birdeye");
     }
 
     // ── Step 3: Fetch PnL history for each wallet ────────────────────────────
@@ -213,8 +211,10 @@ ${JSON.stringify(walletsForAI, null, 2)}`;
     console.error("[wallets] Pipeline error:", error);
     return res.status(200).json({
       ticker,
-      wallets: getMockWallets(),
-      source: "mock",
+      wallets: [],
+      smart_count: 0,
+      smart_ratio: 0,
+      source: "unavailable",
       reason: error.message,
     });
   }
@@ -302,15 +302,4 @@ function scoreWalletRuleBased(w) {
       ? "Meets win rate and PnL thresholds based on trading history."
       : "Does not meet minimum smart money criteria.",
   };
-}
-
-function getMockWallets() {
-  return [
-    { wallet_address: "0x3aF7...b291", win_rate_percentage: 78, total_realized_pnl_usd: 842000,  total_trades: 234, risk_classification: "Moderate",      is_smart_money: true,  smart_money_reason: "Consistent high win rate across multiple tokens." },
-    { wallet_address: "0x1c9E...d047", win_rate_percentage: 71, total_realized_pnl_usd: 1240000, total_trades: 189, risk_classification: "Aggressive",    is_smart_money: true,  smart_money_reason: "Strong PnL with above-threshold win rate." },
-    { wallet_address: "4xKmP...qR2s", win_rate_percentage: 64, total_realized_pnl_usd: 390000,  total_trades: 412, risk_classification: "Degenerate",    is_smart_money: false, smart_money_reason: "Win rate slightly below 65% threshold." },
-    { wallet_address: "0x82bD...f3A1", win_rate_percentage: 69, total_realized_pnl_usd: 670000,  total_trades: 301, risk_classification: "Moderate",      is_smart_money: true,  smart_money_reason: "Meets both win rate and PnL criteria." },
-    { wallet_address: "9wLqT...mN5j", win_rate_percentage: 55, total_realized_pnl_usd: 88000,   total_trades: 567, risk_classification: "Aggressive",    is_smart_money: false, smart_money_reason: "PnL below $100K threshold." },
-    { wallet_address: "0xE4c2...7e9F", win_rate_percentage: 82, total_realized_pnl_usd: 2100000, total_trades: 98,  risk_classification: "Conservative",  is_smart_money: true,  smart_money_reason: "Elite win rate with very high realized PnL." },
-  ];
 }

@@ -42,7 +42,7 @@ export function SCard({ num, title, step, loading }) {
 }
 
 export function WalletTable({ wallets, loading, onRefresh }) {
-  const data = wallets && wallets.length > 0 ? wallets : getMockWallets();
+  const data = wallets || [];
   return (
     <div className="wallet-panel" style={{ background: "#0a0f16", border: "1px solid #0d2030", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
@@ -60,6 +60,13 @@ export function WalletTable({ wallets, loading, onRefresh }) {
             </tr>
           </thead>
           <tbody>
+            {data.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ padding: "12px 8px", color: "#335566", fontFamily: "'Share Tech Mono',monospace", fontSize: 10 }}>
+                  {loading ? "loading live wallet data..." : "no live wallet data available"}
+                </td>
+              </tr>
+            )}
             {data.map((w, i) => (
               <tr key={i} style={{ borderBottom: "1px solid #0a1520" }}>
                 <td style={{ padding: "8px", fontFamily: "'Share Tech Mono',monospace", fontSize: 10, color: "#335566" }} title={w.wallet_address}>{fmtWalletAddress(w.wallet_address)}</td>
@@ -78,18 +85,8 @@ export function WalletTable({ wallets, loading, onRefresh }) {
 }
 
 export function ChainBadge({ chain }) {
-  const m = { ETH: ["#627eea22", "#627eea"], SOL: ["#9945ff22", "#9945ff"], BASE: ["#0052ff22", "#0052ff"], BSC: ["#f3ba2f22", "#f3ba2f"], NATIVE: ["#00cfff22", "#00cfff"] };
+  const label = { ETHEREUM: "ETH", SOLANA: "SOL", POLYGON: "POLY" }[chain] || chain;
+  const m = { ETH: ["#627eea22", "#627eea"], ETHEREUM: ["#627eea22", "#627eea"], SOL: ["#9945ff22", "#9945ff"], SOLANA: ["#9945ff22", "#9945ff"], BASE: ["#0052ff22", "#0052ff"], BSC: ["#f3ba2f22", "#f3ba2f"], NATIVE: ["#00cfff22", "#00cfff"] };
   const [bg, col] = m[chain] || ["#33445522", "#446688"];
-  return <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: bg, color: col, fontFamily: "'Share Tech Mono',monospace", border: `1px solid ${col}44` }}>{chain}</span>;
-}
-
-export function getMockWallets() {
-  return [
-    { wallet_address: "0x3aF7...b291", win_rate_percentage: 78, total_realized_pnl_usd: 842000, total_trades: 234, risk_classification: "Moderate", is_smart_money: true },
-    { wallet_address: "0x1c9E...d047", win_rate_percentage: 71, total_realized_pnl_usd: 1240000, total_trades: 189, risk_classification: "Aggressive", is_smart_money: true },
-    { wallet_address: "4xKmP...qR2s", win_rate_percentage: 64, total_realized_pnl_usd: 390000, total_trades: 412, risk_classification: "Degenerate", is_smart_money: false },
-    { wallet_address: "0x82bD...f3A1", win_rate_percentage: 69, total_realized_pnl_usd: 670000, total_trades: 301, risk_classification: "Moderate", is_smart_money: true },
-    { wallet_address: "9wLqT...mN5j", win_rate_percentage: 55, total_realized_pnl_usd: 88000, total_trades: 567, risk_classification: "Aggressive", is_smart_money: false },
-    { wallet_address: "0xE4c2...7e9F", win_rate_percentage: 82, total_realized_pnl_usd: 2100000, total_trades: 98, risk_classification: "Conservative", is_smart_money: true },
-  ];
+  return <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: bg, color: col, fontFamily: "'Share Tech Mono',monospace", border: `1px solid ${col}44` }}>{label}</span>;
 }
