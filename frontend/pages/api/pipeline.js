@@ -11,6 +11,10 @@ export default async function handler(req, res) {
   const step1 = {
     step: 1, name: "social_momentum",
     zscore, mentions_1h: mentions,
+    mentions_change_pct_24h: social.mentions_change_pct_24h ?? null,
+    mentions_change_pct_7d: social.mentions_change_pct_7d ?? null,
+    mentions_change_pct_30d: social.mentions_change_pct_30d ?? null,
+    mentions_trends_loaded: !!social.mentions_trends_loaded,
     threshold: 2.0,
     passed: zscore > 2.0,
     sources: ["4chan_biz", "reddit", "telegram"],

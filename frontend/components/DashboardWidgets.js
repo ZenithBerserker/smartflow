@@ -1,3 +1,5 @@
+import { fmtSignedPct } from "../lib/format";
+
 export function NCard({ label, value, sub, accent }) {
   const c = accent === "green" ? "#00ff88" : accent === "cyan" ? "#00cfff" : accent === "amber" ? "#ffaa00" : null;
   return (
@@ -27,7 +29,11 @@ export function SCard({ num, title, step, loading }) {
             {num === 4 && (step.signal?.replace(/_/g, " ") || "--")}
           </div>
           <div style={{ fontSize: 10, color: "#335566", marginTop: 2 }}>
-            {num === 1 && `${step.mentions_1h} mentions/hr`}
+            {num === 1 && `${step.mentions_1h} mentions/hr${
+              step.mentions_trends_loaded && step.mentions_change_pct_24h != null
+                ? ` · Δ24h ${fmtSignedPct(step.mentions_change_pct_24h)}`
+                : ""
+            }`}
             {num === 2 && `OBV ${step.obv_signal}`}
             {num === 3 && `${step.bias_score || 0}% long bias`}
             {num === 4 && `${step.confidence}% confidence`}

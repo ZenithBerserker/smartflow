@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import { ChainBadge, LongShortPanel, NCard, SCard } from "../components/DashboardWidgets";
 import PositionsTab from "../components/PositionsTab";
-import { fmtNum, fmtPrice } from "../lib/format";
+import { fmtNum, fmtPrice, fmtSignedPct } from "../lib/format";
 import { TRACKED_TICKERS } from "../lib/tokens";
 
 const SIGNAL_COLORS = { HIGH_CONVICTION_BUY:"#00ff88", BUY:"#00cfff", NO_SIGNAL:"#334455" };
@@ -115,6 +115,63 @@ function buildChartStudies(candles, signalTimeframe=null) {
   return {nw,zones,macd,markers};
 }
 
+function drawMentionsVolumeChart(canvas, values) {
+  if (!canvas) return;
+  const arr = Array.isArray(values) && values.length > 0 ? values : [];
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const parent = canvas.parentElement;
+  const W = Math.min(760, Math.max(220, parent?.offsetWidth || 440));
+  const H = 88;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = `${W}px`;
+  canvas.style.height = `${H}px`;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#070a0f";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#335566";
+  ctx.font = "10px 'Share Tech Mono',monospace";
+
+  if (arr.length === 0) {
+    ctx.fillText("Stored history unavailable — configure Supabase for 24h·7d·30d deltas + chart.", 10, Math.floor(H / 2));
+    return;
+  }
+
+  const padL = 6;
+  const padR = 6;
+  const padT = 8;
+  const padB = 16;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const maxVal = Math.max(...arr, 1);
+  const n = arr.length;
+  const gap = Math.max(0.5, innerW / n * 0.06);
+  const barW = Math.max(2, innerW / n - gap);
+
+  arr.forEach((v, i) => {
+    const h = innerH * (Number(v) / maxVal);
+    const x = padL + (innerW / n) * i + gap / 2;
+    const y = padT + innerH - h;
+    const g = ctx.createLinearGradient(0, y, 0, padT + innerH);
+    g.addColorStop(0, "#00ff88");
+    g.addColorStop(1, "#00cfff44");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, barW, h);
+  });
+
+  ctx.fillStyle = "#223344";
+  ctx.font = "9px 'Share Tech Mono',monospace";
+  const labelY = H - 4;
+  ctx.fillText("30d ago", padL, labelY);
+  ctx.textAlign = "center";
+  ctx.fillText("mid", padL + innerW / 2, labelY);
+  ctx.textAlign = "right";
+  ctx.fillText("now", W - padR, labelY);
+  ctx.textAlign = "start";
+}
+
 export default function Home() {
   const [selected,setSelected]=useState("BTC");
   const [zscores,setZscores]=useState([]);
@@ -140,6 +197,7 @@ export default function Home() {
   const chartGeomRef=useRef(null);
   const chartHoverRef=useRef(null);
   const chartDragRef=useRef(null);
+  const mentionsHistRef=useRef(null);
 
   useEffect(()=>{
     const f=async()=>{ try{ const r=await fetch("/api/zscores"); const d=await r.json(); setZscores(d.tickers||[]); }catch{} };
@@ -167,6 +225,16 @@ export default function Home() {
     setChartYScale(1);
     setChartRevision(v=>v+1);
   },[chartTf]);
+
+  useEffect(()=>{
+    const z=zscores.find(x=>x.ticker===selected);
+    const series=z?.mentions_daily_30d;
+    const redraw=()=>drawMentionsVolumeChart(mentionsHistRef.current, series);
+    redraw();
+    const onResize=()=>redraw();
+    window.addEventListener("resize", onResize);
+    return()=>window.removeEventListener("resize", onResize);
+  },[selected, zscores]);
 
   useEffect(()=>{
     const onResize=()=>setChartRevision(v=>v+1);
@@ -578,6 +646,8 @@ export default function Home() {
       .chart-canvas{height:170px!important}
       .mention-panel{padding:10px 11px!important;margin-bottom:10px!important}
       .mention-grid{gap:6px!important}
+      .mention-change-grid{grid-template-columns:1fr!important;gap:8px!important}
+      .mention-history-canvas{width:100%!important}
       .mention-value{font-size:20px!important}
       .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;margin-bottom:10px!important}
       .metric-card{padding:8px 9px!important}
@@ -757,6 +827,32 @@ export default function Home() {
             ))}
           </div>
           {mentionData?.error&&<div style={{fontSize:10,color:"#ff4466",fontFamily:"'Share Tech Mono',monospace",marginTop:8}}>{mentionData.error}</div>}
+
+          <div style={{fontSize:9,color:"#223344",fontFamily:"'Share Tech Mono',monospace",marginTop:12,lineHeight:1.4}}>
+            Stored trend % compares each rolling window (24h · 7d · 30d) to the same length immediately before · needs Supabase mention history (+60d scrape coverage for 30d Δ).
+          </div>
+
+          <div className="mention-change-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:14}}>
+            {[
+              ["Δ 24h", zs?.mentions_change_pct_24h],
+              ["Δ 7d", zs?.mentions_change_pct_7d],
+              ["Δ 30d", zs?.mentions_change_pct_30d],
+            ].map(([label,val])=>(
+              <div key={label} style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:6,padding:"10px 12px"}}>
+                <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>Mentions {label}</div>
+                <div style={{
+                  fontSize:20,fontWeight:700,fontFamily:"'Share Tech Mono',monospace",
+                  color:val===null||val===undefined?"#446688":val>0?"#00ff88":val<0?"#ff4466":"#99bbcc",
+                  textShadow:val>0?"0 0 8px #00ff8855":val<0?"0 0 8px #ff446655":"none",
+                }}>{fmtSignedPct(val)}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{marginTop:14}}>
+            <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em",marginBottom:6}}>Mentions · 30d rolling (stored)</div>
+            <canvas ref={mentionsHistRef} className="mention-history-canvas" width={600} height={88} style={{display:"block",width:"100%",borderRadius:4,border:"1px solid #0d2030"}}/>
+          </div>
         </div>
 
         {/* Metric cards */}

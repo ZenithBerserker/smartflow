@@ -13,3 +13,11 @@ export function fmtNum(n) {
   if (n >= 1e3) return "$" + (n / 1e3).toFixed(1) + "K";
   return "$" + n.toFixed(2);
 }
+
+/** @param {number|null|undefined} p */
+export function fmtSignedPct(p) {
+  if (p === null || p === undefined || Number.isNaN(Number(p))) return "—";
+  const v = Number(p);
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(1)}%`;
+}
