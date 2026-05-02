@@ -148,14 +148,41 @@ function fmtUSD(n) {
 // ── Main Positions Component ───────────────────────────────────────────────
 
 export default function PositionsTab() {
-  const [regime] = useState(computeMacroRegime);
-  const [smartMoney] = useState(computeSmartMoney);
-  const [fib] = useState(() => computeFibonacci(96400));
-  const [readiness] = useState(() => computeReadiness(computeMacroRegime(), computeSmartMoney(), computeFibonacci(96400)));
+  const [regime, setRegime] = useState(computeMacroRegime());
+  const [smartMoney, setSmartMoney] = useState(computeSmartMoney());
+  const [fib, setFib] = useState(() => computeFibonacci(96400));
+  const [readiness, setReadiness] = useState(() => computeReadiness(computeMacroRegime(), computeSmartMoney(), computeFibonacci(96400)));
   const [position] = useState(MOCK_POSITION);
   const [lastTrade] = useState("2025-04-14");
   const [cooldownDays] = useState(17);
+  const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState("loading...");
   const fibCanvasRef = useRef(null);
+
+  useEffect(() => {
+    async function fetchAll() {
+      setLoading(true);
+      try {
+        const [regimeRes, smRes, fibRes] = await Promise.all([
+          fetch("/api/regime").then(r => r.json()),
+          fetch("/api/smartmoney").then(r => r.json()),
+          fetch("/api/fibonacci").then(r => r.json()),
+        ]);
+        setRegime(regimeRes);
+        setSmartMoney(smRes);
+        setFib(fibRes);
+        setReadiness(computeReadiness(regimeRes, smRes, fibRes));
+        setDataSource(regimeRes.source === "binance_public" ? "live" : "mock");
+      } catch (e) {
+        console.error("positions data fetch failed:", e);
+        setDataSource("mock");
+      }
+      setLoading(false);
+    }
+    fetchAll();
+    const iv = setInterval(fetchAll, 5 * 60 * 1000); // refresh every 5 min
+    return () => clearInterval(iv);
+  }, []);
 
   // Draw Fibonacci visualization
   useEffect(() => {
@@ -252,14 +279,21 @@ export default function PositionsTab() {
   return (
     <div style={{ fontFamily: mono }}>
 
+      {/* Data source badge */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        <span style={{ fontSize: 9, fontFamily: mono, color: dataSource === "live" ? "#00ff88" : dataSource === "loading..." ? "#ffaa00" : "#446688", padding: "2px 8px", border: `1px solid ${dataSource === "live" ? "#00ff8833" : "#1a2a3a"}`, borderRadius: 4 }}>
+          {loading ? "⟳ fetching live data..." : dataSource === "live" ? "◉ live — binance public" : "◎ mock data"}
+        </span>
+      </div>
+
       {/* Trade Readiness Banner */}
-      <div className="positions-readiness" style={{ background: readiness.score >= 85 ? "#00ff8811" : "#0a0f16", border: `1px solid ${readiness.color}44`, borderRadius: 8, padding: "14px 20px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ background: readiness.score >= 85 ? "#00ff8811" : "#0a0f16", border: `1px solid ${readiness.color}44`, borderRadius: 8, padding: "14px 20px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <div style={{ fontSize: 10, color: "#335566", marginBottom: 4, letterSpacing: ".12em" }}>TRADE READINESS METER</div>
           <div style={{ fontSize: 32, fontWeight: 700, color: readiness.color, textShadow: `0 0 20px ${readiness.color}66`, lineHeight: 1 }}>{readiness.score}<span style={{ fontSize: 16, color: "#446688" }}>/100</span></div>
           <div style={{ fontSize: 11, color: readiness.color, marginTop: 4, letterSpacing: ".08em" }}>{readiness.score >= 85 ? "⚡ EXECUTION THRESHOLD REACHED" : readiness.score >= 65 ? "◉ MONITORING — APPROACHING SETUP" : "◎ WAITING FOR HIGH-CONVICTION SETUP"}</div>
         </div>
-        <div className="positions-readiness-bars" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <ReadinessBar label="MACRO" score={readiness.breakdown?.macro || 0} max={35} color="#00cfff" />
           <ReadinessBar label="SMART MONEY" score={readiness.breakdown?.smartMoney || 0} max={35} color="#ffaa00" />
           <ReadinessBar label="FIB ZONE" score={readiness.breakdown?.fib || 0} max={30} color="#00ff88" />
@@ -272,7 +306,7 @@ export default function PositionsTab() {
         </div>
       </div>
 
-      <div className="positions-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
         {/* Macro Regime */}
         <div style={{ background: "#0a0f16", border: `1px solid ${regime.valid ? "#0d2030" : "#ff446633"}`, borderRadius: 8, padding: 14 }}>
@@ -367,9 +401,9 @@ export default function PositionsTab() {
             </div>
           </div>
         </div>
-        <div className="positions-fib-grid" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 12 }}>
           <div>
-            <canvas className="positions-canvas" ref={fibCanvasRef} width={500} height={220} style={{ width: "100%", height: "220px", display: "block" }} />
+            <canvas ref={fibCanvasRef} width={500} height={220} style={{ width: "100%", height: "220px", display: "block" }} />
           </div>
           <div>
             <div style={{ fontSize: 9, color: "#335566", marginBottom: 8 }}>CONFLUENCE ZONES</div>
@@ -399,7 +433,7 @@ export default function PositionsTab() {
         </div>
       </div>
 
-      <div className="positions-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
         {/* Active Position */}
         <div style={{ background: "#0a0f16", border: `1px solid ${position.active ? "#00ff8833" : "#0d2030"}`, borderRadius: 8, padding: 14, boxShadow: position.active ? "0 0 20px #00ff8811" : "none" }}>
