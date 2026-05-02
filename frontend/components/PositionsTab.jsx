@@ -1,31 +1,16 @@
-// Positions tab — institutional low-frequency sniper system
-// Drop this into your BlackCat dashboard as a new tab
+// Positions tab — low-frequency BTC setup planner
 
 import { useState, useEffect, useRef } from "react";
 
-// ── Mock data engines ─────────────────────────────────────────────────────────
-
 function computeMacroRegime() {
-  // Simulates NH-HMM + monthly candle exhaustion logic
-  const regimes = [
-    { state: "BULLISH_EXPANSION", label: "Bullish Expansion", color: "#00ff88", risk: "MODERATE", trend: "STRONG UP", rsi: 61.4, mvrv: 2.1, consecutive_red: 0, valid: true },
-    { state: "CAPITULATION_RECOVERY", label: "Capitulation Recovery", color: "#00cfff", risk: "LOW", trend: "RECOVERING", rsi: 34.2, mvrv: 0.3, consecutive_red: 5, valid: true },
-    { state: "EQUILIBRIUM_ACCUMULATION", label: "Equilibrium Accumulation", color: "#ffaa00", risk: "LOW-MEDIUM", trend: "SIDEWAYS", rsi: 48.7, mvrv: 1.2, consecutive_red: 1, valid: true },
-    { state: "BEAR_EXPANSION", label: "Bear Expansion", color: "#ff4466", risk: "EXTREME", trend: "STRONG DOWN", rsi: 28.1, mvrv: 0.8, consecutive_red: 4, valid: false },
-    { state: "DISTRIBUTION", label: "Distribution", color: "#ff4466", risk: "HIGH", trend: "TOPPING", rsi: 77.3, mvrv: 3.8, consecutive_red: 0, valid: false },
-  ];
-  // Deterministic based on current hour
-  const idx = Math.floor(Date.now() / (1000 * 60 * 60 * 3)) % regimes.length;
-  return regimes[1]; // Show capitulation recovery for demo
+  return { state: "EQUILIBRIUM_ACCUMULATION", label: "Equilibrium Accumulation", color: "#ffaa00", risk: "LOW-MEDIUM", trend: "SIDEWAYS", rsi: 48.7, mvrv: 1.2, consecutive_red: 0, valid: true };
 }
 
 function computeSmartMoney() {
-  const seed = Math.floor(Date.now() / (1000 * 60 * 10));
-  const rng = (s) => ((seed * s * 9301 + 49297) % 233280) / 233280;
-  const longBias = Math.round(55 + rng(1) * 20);
+  const longBias = 52;
   const shortBias = 100 - longBias;
-  const battleScore = Math.round((longBias - 50) * 2 + rng(2) * 20 - 10);
-  const conviction = Math.min(95, Math.round(Math.abs(battleScore) * 0.8 + rng(3) * 20 + 40));
+  const battleScore = 0;
+  const conviction = 42;
 
   let status, statusColor;
   if (battleScore > 50) { status = "STRONG LONG"; statusColor = "#00ff88"; }
@@ -34,19 +19,8 @@ function computeSmartMoney() {
   else if (battleScore > -50) { status = "SHORT"; statusColor = "#ff8844"; }
   else { status = "STRONG SHORT"; statusColor = "#ff4466"; }
 
-  const traders = [
-    { name: "0x9aK...f3", roi: 847, sortino: 3.2, wr: 72, bias: "LONG", weight: 0.18 },
-    { name: "ByBt...m7", roi: 621, sortino: 2.8, wr: 68, bias: "LONG", weight: 0.15 },
-    { name: "OKX...r9", roi: 534, sortino: 4.1, wr: 74, bias: "LONG", weight: 0.22 },
-    { name: "0xE2...b4", roi: 389, sortino: 2.1, wr: 65, bias: "NEUTRAL", weight: 0.09 },
-    { name: "Bnc...p1", roi: 712, sortino: 3.7, wr: 71, bias: "LONG", weight: 0.19 },
-    { name: "0x7c...d8", roi: 298, sortino: 1.9, wr: 61, bias: "SHORT", weight: 0.08 },
-  ];
-
-  return { longBias, shortBias, battleScore, conviction, status, statusColor, traders };
+  return { longBias, shortBias, globalLong: null, globalShort: null, battleScore, conviction, status, statusColor, fearGreed: 50, fearGreedLabel: "Neutral", source: "fallback" };
 }
-
-const MOCK_TRADERS = computeSmartMoney().traders;
 
 function computeFibonacci(btcPrice = 96400) {
   // HTF swing: Oct 2023 low → Nov 2021 high (major cycle)
@@ -119,7 +93,7 @@ function computeReadiness(regime, smartMoney, fib) {
   if (total >= 85) { label = "EXECUTE"; color = "#00ff88"; }
   else if (total >= 65) { label = "STANDBY"; color = "#00cfff"; }
   else if (total >= 40) { label = "WATCHING"; color = "#ffaa00"; }
-  else { label = "WAIT"; color: "#ff4466"; color = "#ff4466"; }
+  else { label = "WAIT"; color = "#ff4466"; }
 
   return { score: total, label, color,
     breakdown: { macro: macroScore, smartMoney: smScore, fib: fibScore }
@@ -163,7 +137,11 @@ function normalizeSmartMoney(data) {
     conviction: Number.isFinite(data?.conviction) ? data.conviction : fallback.conviction,
     status: data?.status || fallback.status,
     statusColor: data?.statusColor || fallback.statusColor,
-    traders: Array.isArray(data?.traders) && data.traders.length > 0 ? data.traders : MOCK_TRADERS,
+    globalLong: Number.isFinite(data?.globalLong) ? data.globalLong : fallback.globalLong,
+    globalShort: Number.isFinite(data?.globalShort) ? data.globalShort : fallback.globalShort,
+    fearGreed: Number.isFinite(data?.fearGreed) ? data.fearGreed : fallback.fearGreed,
+    fearGreedLabel: data?.fearGreedLabel || fallback.fearGreedLabel,
+    source: data?.source || fallback.source,
   };
 }
 
@@ -262,7 +240,7 @@ export default function PositionsTab() {
         setDataSource([regimeRes.source, smRes.source, fibRes.source].every(source => source && !String(source).includes("mock")) ? "live" : "partial");
       } catch (e) {
         console.error("positions data fetch failed:", e);
-        setDataSource("mock");
+        setDataSource("fallback");
       }
       setLoading(false);
     }
@@ -445,8 +423,8 @@ export default function PositionsTab() {
             {[
               ["BATTLE SCORE", (smartMoney.battleScore > 0 ? "+" : "") + smartMoney.battleScore, smartMoney.battleScore > 20 ? "#00ff88" : smartMoney.battleScore < -20 ? "#ff4466" : "#ffaa00"],
               ["CONVICTION", smartMoney.conviction + "%", smartMoney.conviction > 70 ? "#00ff88" : "#ffaa00"],
-              ["TRADERS TRACKED", "28 qualified", "#99bbcc"],
-              ["SORTINO FILTER", "≥ 2.0", "#99bbcc"],
+              ["TOP LONG", `${smartMoney.longBias}%`, "#00cfff"],
+              ["TOP SHORT", `${smartMoney.shortBias}%`, "#ff4466"],
             ].map(([l, v, c]) => (
               <div key={l} style={{ background: "#070a0f", borderRadius: 4, padding: "6px 8px" }}>
                 <div style={{ fontSize: 9, color: "#335566", marginBottom: 2 }}>{l}</div>
@@ -458,18 +436,16 @@ export default function PositionsTab() {
             <div style={{ fontSize: 9, color: "#335566", marginBottom: 2 }}>SMART MONEY STATUS</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: smartMoney.statusColor, textShadow: `0 0 12px ${smartMoney.statusColor}66`, letterSpacing: ".1em" }}>{smartMoney.status}</div>
           </div>
-          {/* Top traders mini table */}
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 9, color: "#335566", marginBottom: 4, display: "grid", gridTemplateColumns: "1fr 50px 50px 40px 50px", gap: 4 }}>
-              <span>TRADER</span><span>ROI</span><span>SORTINO</span><span>WR</span><span>BIAS</span>
-            </div>
-            {(smartMoney.traders || MOCK_TRADERS).slice(0, 4).map((t, i) => (
-              <div key={i} style={{ fontSize: 10, display: "grid", gridTemplateColumns: "1fr 50px 50px 40px 50px", gap: 4, padding: "3px 0", borderBottom: "1px solid #0a1520" }}>
-                <span style={{ color: "#446688" }}>{t.name}</span>
-                <span style={{ color: "#00cfff" }}>+{t.roi}%</span>
-                <span style={{ color: t.sortino >= 3 ? "#00ff88" : "#99bbcc" }}>{t.sortino.toFixed(1)}</span>
-                <span style={{ color: "#99bbcc" }}>{t.wr}%</span>
-                <span style={{ color: t.bias === "LONG" ? "#00ff88" : t.bias === "SHORT" ? "#ff4466" : "#ffaa00", fontSize: 9 }}>{t.bias}</span>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            {[
+              ["GLOBAL LONG", Number.isFinite(smartMoney.globalLong) ? `${smartMoney.globalLong}%` : "—", "#00cfff"],
+              ["GLOBAL SHORT", Number.isFinite(smartMoney.globalShort) ? `${smartMoney.globalShort}%` : "—", "#ff4466"],
+              ["FEAR/GREED", `${smartMoney.fearGreed} · ${smartMoney.fearGreedLabel}`, smartMoney.fearGreed >= 65 ? "#ffaa00" : smartMoney.fearGreed <= 35 ? "#00cfff" : "#99bbcc"],
+              ["SOURCE", String(smartMoney.source || "public").replace(/_/g, " "), "#99bbcc"],
+            ].map(([l, v, c]) => (
+              <div key={l} style={{ background: "#070a0f", borderRadius: 4, padding: "6px 8px" }}>
+                <div style={{ fontSize: 9, color: "#335566", marginBottom: 2 }}>{l}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: c }}>{v}</div>
               </div>
             ))}
           </div>
@@ -562,7 +538,7 @@ export default function PositionsTab() {
           <SectionHeader title="SIGNAL GATE STATUS" />
           <div style={{ marginBottom: 10 }}>
             {[
-              ["GATEWAY 1", "Macro Regime Valid", regime.valid, regime.valid ? "NH-HMM: CAPITULATION_RECOVERY" : "BLOCKED — BEAR EXPANSION"],
+              ["GATEWAY 1", "Macro Regime Valid", regime.valid, regime.valid ? regime.label : "Macro regime blocks entries"],
               ["GATEWAY 2", "Smart Money Aligned", smartMoney.battleScore > 20, `Battle Score: ${smartMoney.battleScore > 0 ? "+" : ""}${smartMoney.battleScore}`],
               ["GATEWAY 3", "Fibonacci Strike Zone", fib.inOTE, fib.inOTE ? "Price in OTE zone" : `${Math.abs(fib.nearestZone?.pctFromCurrent || 0).toFixed(1)}% from nearest zone`],
               ["GATEWAY 4", "Account Position", position.active, position.active ? "Signal plan is executable" : "No connected exchange position"],

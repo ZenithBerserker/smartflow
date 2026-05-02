@@ -116,7 +116,7 @@ function buildChartStudies(candles, signalTimeframe=null) {
 }
 
 export default function Home() {
-  const [selected,setSelected]=useState("TURBO");
+  const [selected,setSelected]=useState("BTC");
   const [zscores,setZscores]=useState([]);
   const [result,setResult]=useState(null);
   const [loading,setLoading]=useState(false);
@@ -532,6 +532,8 @@ export default function Home() {
   const liveRsi=s2?.rsi??priceData?.technicals?.rsi;
   const liveObv=s2?.obv_signal||priceData?.technicals?.obv_signal;
   const fibSignal=priceData?.fib_signal;
+  const lastPriceUpdate=priceData?.timestamp?new Date(priceData.timestamp).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"—";
+  const chartSource=priceData?.candle_source?.replace(/_/g," ")||"loading";
   const chartWindow=resolveChartWindow(priceData?.candles?.length||0);
   const chartCanZoomIn=chartWindow.count>Math.min(priceData?.candles?.length||0,18);
   const chartCanZoomOut=chartWindow.count<(priceData?.candles?.length||0);
@@ -690,7 +692,8 @@ export default function Home() {
               </div>
               {priceData?.chain&&<div style={{marginTop:10,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
                 <ChainBadge chain={priceData.chain==="solana"?"SOL":priceData.chain==="native"?"NATIVE":"ETH"}/>
-                <span style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>{priceData.dex||""}</span>
+                <span style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>{priceData.dex||priceData.candle_source||""}</span>
+                <span style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace"}}>updated {lastPriceUpdate}</span>
               </div>}
             </>}
           </div>
@@ -698,15 +701,18 @@ export default function Home() {
           {/* Candlestick chart */}
           <div className="chart-panel" style={chartExpanded?{position:"fixed",inset:10,zIndex:20,background:"#0a0f16",border:"1px solid #1a4a5a",borderRadius:8,padding:"10px 12px",boxShadow:"0 0 40px #000b",display:"flex",flexDirection:"column"}:{background:"#0a0f16",border:"1px solid #0d2030",borderRadius:8,padding:"10px 12px"}}>
             <div className="chart-header" style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8,gap:8,flexWrap:"wrap"}}>
-              <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Chart · {selected}/USD</div>
+              <div>
+                <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Chart · {selected}/USD</div>
+                <div style={{fontSize:9,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginTop:3}}>{priceData?.candle_count||0} candles · {chartSource}</div>
+              </div>
               <div className="chart-controls" style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
                 {CHART_TFS.map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button className="tf-btn" onClick={()=>zoomChart(1.25)} disabled={!chartCanZoomOut} title="Show more time">T−</button>
-                <button className="tf-btn" onClick={()=>zoomChart(0.8)} disabled={!chartCanZoomIn} title="Show less time">T+</button>
-                <button className="tf-btn" onClick={()=>changeChartYScale(1.2)} disabled={chartYScale>=3} title="Compress price scale">P−</button>
-                <button className="tf-btn" onClick={()=>changeChartYScale(0.82)} disabled={chartYScale<=0.35} title="Expand price scale">P+</button>
+                <button className="tf-btn" onClick={()=>zoomChart(1.25)} disabled={!chartCanZoomOut} title="Show more candles">More</button>
+                <button className="tf-btn" onClick={()=>zoomChart(0.8)} disabled={!chartCanZoomIn} title="Show fewer candles">Less</button>
+                <button className="tf-btn" onClick={()=>changeChartYScale(1.2)} disabled={chartYScale>=3} title="Compress price axis">Flat</button>
+                <button className="tf-btn" onClick={()=>changeChartYScale(0.82)} disabled={chartYScale<=0.35} title="Expand price axis">Tall</button>
                 <button className="tf-btn" onClick={resetChartView} disabled={!priceData?.candles?.length} title="Return to latest candles">Latest</button>
                 <button className="tf-btn" onClick={()=>setChartExpanded(v=>!v)} title={chartExpanded?"Collapse chart":"Expand chart"}>{chartExpanded?"×":"□"}</button>
                 <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} title="Refresh chart" style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
@@ -757,7 +763,7 @@ export default function Home() {
         <div className="metric-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:12}}>
           <NCard label="Social z" value={s1?s1.zscore.toFixed(2):(zs?.zscore?.toFixed(2)||"—")} sub={s1?.passed?"elevated":"7d baseline"} accent={s1?.passed?"green":null}/>
           <NCard label="Mentions/hr" value={s1?s1.mentions_1h.toLocaleString():(zs?Math.round(zs.mentions_1h):"—")} sub="social velocity"/>
-          <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.candle_source==="unavailable"?"candles unavailable":"live candles"} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
+          <NCard label="RSI" value={liveRsi!==undefined?liveRsi.toFixed(0):"—"} sub={priceData?.candle_source==="unavailable"?"candles unavailable":chartSource} accent={liveRsi!==undefined&&liveRsi<75&&liveRsi>40?"cyan":null}/>
           <NCard label="OBV" value={liveObv?(liveObv==="rising"?"↑ rising":liveObv==="falling"?"↓ falling":"→ flat"):"—"} sub={priceData?.technicals?.buy_ratio!==undefined?`${Math.round(priceData.technicals.buy_ratio*100)}% buy ratio`:"live flow"} accent={liveObv==="rising"?"green":null}/>
           <NCard label="Fib" value={fibSignal?.signal||"—"} sub={fibSignal?`${fibSignal.confidence}% · 1h/4h/1d`:"multi-frame"} accent={fibSignal?.signal==="BUY"?"green":fibSignal?.signal==="NEUTRAL"?"cyan":null}/>
         </div>
