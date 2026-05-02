@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import { ChainBadge, LongShortPanel, NCard, SCard } from "../components/DashboardWidgets";
 import PositionsTab from "../components/PositionsTab";
@@ -120,7 +120,6 @@ export default function Home() {
   const [zscores,setZscores]=useState([]);
   const [result,setResult]=useState(null);
   const [loading,setLoading]=useState(false);
-  const [log,setLog]=useState(["ready. choose a token and run scan."]);
   const [tab,setTab]=useState("pipeline");
   const [lookupQuery,setLookupQuery]=useState("");
   const [lookupResult,setLookupResult]=useState(null);
@@ -136,17 +135,9 @@ export default function Home() {
   const [chartExpanded,setChartExpanded]=useState(false);
   const [chartZoom,setChartZoom]=useState(1);
   const [chartRevision,setChartRevision]=useState(0);
-  const logRef=useRef(null);
   const chartRef=useRef(null);
   const chartGeomRef=useRef(null);
   const chartHoverRef=useRef(null);
-
-  const addLog=useCallback((msg)=>{
-    const ts=new Date().toLocaleTimeString("en-US",{hour12:false});
-    setLog(p=>[...p.slice(-60),`[${ts}] ${msg}`]);
-  },[]);
-
-  useEffect(()=>{ if(logRef.current) logRef.current.scrollTop=logRef.current.scrollHeight; },[log]);
 
   useEffect(()=>{
     const f=async()=>{ try{ const r=await fetch("/api/zscores"); const d=await r.json(); setZscores(d.tickers||[]); }catch{} };
@@ -191,10 +182,8 @@ export default function Home() {
       const r=await fetch(`/api/longshort?ticker=${ticker}`);
       const d=await r.json();
       setLongShortData(d);
-      addLog(`long/short loaded for ${ticker}`);
     }catch(e){
       setLongShortData({available:false,source:"error",reason:e.message});
-      addLog(`long/short error: ${e.message}`);
     }
     setLongShortLoading(false);
   };
@@ -217,7 +206,6 @@ export default function Home() {
       });
     }catch(e){
       setMentionData({ticker:ticker.toUpperCase(),total:0,source_counts:{},error:e.message});
-      addLog(`mentions error: ${e.message}`);
     }
     setMentionLoading(false);
   };
@@ -433,22 +421,15 @@ export default function Home() {
   };
 
   const runPipeline=async()=>{
-    if(loading)return; setLoading(true); setResult(null); addLog(`scan started for ${selected}...`);
+    if(loading)return; setLoading(true); setResult(null);
     try{
       const r=await fetch(`/api/pipeline?ticker=${selected}`); const d=await r.json(); setResult(d);
-      d.steps?.forEach(s=>{
-        if(s.name==="social_momentum") addLog(`social z=${s.zscore} — ${s.passed?"PASS":"FAIL"}`);
-        if(s.name==="technical_confluence") addLog(`RSI=${s.rsi} OBV=${s.obv_signal} — ${s.passed?"PASS":"FAIL"}`);
-        if(s.name==="long_short_sentiment") addLog(`long/short ${s.signal} ${s.bias_score}% — ${s.passed?"PASS":"FAIL"}`);
-        if(s.name==="signal_generation") addLog(`signal: ${s.signal} (${s.confidence}%)`);
-      });
-    }catch(e){ addLog(`error: ${e.message}`); }
+    }catch(e){ console.error(e); }
     setLoading(false);
   };
 
   const runLookup=async()=>{
     if(!lookupQuery.trim()||lookupLoading)return; setLookupLoading(true); setLookupResult(null);
-    addLog(`looking up: ${lookupQuery.toUpperCase()}...`);
     try{
       const [pipeRes,priceRes]=await Promise.all([
         fetch(`/api/pipeline?ticker=${lookupQuery.trim().toUpperCase()}`),
@@ -457,8 +438,7 @@ export default function Home() {
       const [pipeData,priceD]=await Promise.all([pipeRes.json(),priceRes.json()]);
       const liveMentions=await fetchMentionsForTicker(lookupQuery.trim().toUpperCase(),true);
       setLookupResult({...pipeData,changes:{},mentions:liveMentions,price:priceD});
-      addLog(`lookup done: ${lookupQuery.toUpperCase()} — ${pipeData.signal?.signal||"no signal"}`);
-    }catch(e){ addLog(`lookup error: ${e.message}`); }
+    }catch(e){ console.error(e); }
     setLookupLoading(false);
   };
 
@@ -542,7 +522,6 @@ export default function Home() {
       .signal-title{font-size:19px!important;line-height:1.1!important}
       .signal-confidence{width:100%!important;text-align:left!important}
       .run-btn{width:100%!important;padding:10px 12px!important}
-      .log-panel{padding:9px 10px!important}
       .discover-table{overflow-x:auto!important;padding-bottom:4px!important}
       .discover-grid{min-width:610px!important}
       .lookup-form{flex-direction:column!important;gap:7px!important;margin-bottom:12px!important}
@@ -759,13 +738,6 @@ export default function Home() {
           <button className="run-btn" onClick={runPipeline} disabled={loading} style={{padding:"10px 24px",background:"transparent",border:"1px solid #00ff88",borderRadius:4,color:"#00ff88",fontFamily:"'Share Tech Mono',monospace",fontSize:12,cursor:loading?"not-allowed":"pointer",opacity:loading?.5:1,boxShadow:"0 0 10px #00ff8833",letterSpacing:".08em"}}>
             {loading?"Scanning...":"Run scan"}
           </button>
-        </div>
-
-        <div className="log-panel" style={{background:"#070a0f",border:"1px solid #0d2030",borderRadius:8,padding:"10px 14px"}}>
-          <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",marginBottom:6}}>Activity</div>
-          <div ref={logRef} style={{fontFamily:"'Share Tech Mono',monospace",fontSize:11,lineHeight:1.9,maxHeight:110,overflowY:"auto"}}>
-            {log.map((l,i)=><div key={i} style={{color:l.includes("PASS")||l.includes("signal:")?"#00ff88":l.includes("FAIL")||l.includes("error")?"#ff4466":"#335566"}}>{l}</div>)}
-          </div>
         </div>
       </>}
 

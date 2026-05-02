@@ -83,10 +83,18 @@ export default async function handler(req, res) {
     try {
       const gt = getGeckoTimeframe(tf);
       const network = getGeckoNetwork(chainId);
-      candles = await fetchGeckoCandles(network, pairAddress, gt, limit);
+      candles = aggregateCandlesForTimeframe(
+        await fetchGeckoCandles(network, pairAddress, gt, getSourceCandleLimit(tf, limit)),
+        tf
+      );
       if (candles.length === 0) {
         const geckoPool = await findGeckoPool(ticker, network, resolvedMeta?.address || pairData.baseToken?.address);
-        if (geckoPool) candles = await fetchGeckoCandles(network, geckoPool, gt, limit);
+        if (geckoPool) {
+          candles = aggregateCandlesForTimeframe(
+            await fetchGeckoCandles(network, geckoPool, gt, getSourceCandleLimit(tf, limit)),
+            tf
+          );
+        }
       }
     } catch (e) {
       console.log("[price] candle fetch failed:", e.message);
@@ -336,9 +344,36 @@ function getGeckoTimeframe(tf) {
   if (tf === "15m") return { timeframe: "minute", aggregate: 15 };
   if (tf === "1h") return { timeframe: "hour", aggregate: 1 };
   if (tf === "4h") return { timeframe: "hour", aggregate: 4 };
-  if (tf === "1w") return { timeframe: "day", aggregate: 7 };
-  if (tf === "1m") return { timeframe: "day", aggregate: 30 };
+  if (tf === "1w" || tf === "1m") return { timeframe: "day", aggregate: 1 };
   return { timeframe: "day", aggregate: 1 };
+}
+
+function getSourceCandleLimit(tf, displayLimit) {
+  if (tf === "1w") return Math.min(1000, displayLimit * 7 + 14);
+  if (tf === "1m") return Math.min(365, displayLimit * 30 + 30);
+  return displayLimit;
+}
+
+function aggregateCandlesForTimeframe(candles, tf) {
+  if (tf !== "1w" && tf !== "1m") return candles;
+  const { limit, bucketMs } = getCandleConfig(tf);
+  const buckets = new Map();
+
+  candles.forEach((c) => {
+    if (![c.t, c.o, c.h, c.l, c.c].every(Number.isFinite)) return;
+    const key = Math.floor(c.t / bucketMs) * bucketMs;
+    const bucket = buckets.get(key);
+    if (!bucket) {
+      buckets.set(key, { t: key, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 });
+      return;
+    }
+    bucket.h = Math.max(bucket.h, c.h);
+    bucket.l = Math.min(bucket.l, c.l);
+    bucket.c = c.c;
+    bucket.v += c.v || 0;
+  });
+
+  return [...buckets.values()].sort((a, b) => a.t - b.t).slice(-limit);
 }
 
 function getCandleConfig(tf) {

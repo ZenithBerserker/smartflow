@@ -46,6 +46,8 @@ function computeSmartMoney() {
   return { longBias, shortBias, battleScore, conviction, status, statusColor, traders };
 }
 
+const MOCK_TRADERS = computeSmartMoney().traders;
+
 function computeFibonacci(btcPrice = 96400) {
   // HTF swing: Oct 2023 low → Nov 2021 high (major cycle)
   const htfLow = 15479, htfHigh = 108353;
@@ -139,6 +141,68 @@ const MOCK_POSITION = {
   regime: "CAPITULATION_RECOVERY",
 };
 
+function normalizeRegime(data) {
+  const fallback = computeMacroRegime();
+  return {
+    ...fallback,
+    ...data,
+    rsi: Number.isFinite(data?.rsi) ? data.rsi : fallback.rsi,
+    mvrv: Number.isFinite(data?.mvrv) ? data.mvrv : fallback.mvrv,
+    consecutive_red: Number.isFinite(data?.consecutive_red) ? data.consecutive_red : fallback.consecutive_red,
+    valid: typeof data?.valid === "boolean" ? data.valid : fallback.valid,
+    color: data?.color || fallback.color,
+    label: data?.label || fallback.label,
+    risk: data?.risk || fallback.risk,
+    trend: data?.trend || fallback.trend,
+  };
+}
+
+function normalizeSmartMoney(data) {
+  const fallback = computeSmartMoney();
+  const longBias = Number.isFinite(data?.longBias)
+    ? data.longBias
+    : Number.isFinite(data?.globalLong)
+      ? data.globalLong
+      : fallback.longBias;
+  const shortBias = Number.isFinite(data?.shortBias)
+    ? data.shortBias
+    : Number.isFinite(data?.globalShort)
+      ? data.globalShort
+      : 100 - longBias;
+  return {
+    ...fallback,
+    ...data,
+    longBias,
+    shortBias,
+    battleScore: Number.isFinite(data?.battleScore) ? data.battleScore : fallback.battleScore,
+    conviction: Number.isFinite(data?.conviction) ? data.conviction : fallback.conviction,
+    status: data?.status || fallback.status,
+    statusColor: data?.statusColor || fallback.statusColor,
+    traders: Array.isArray(data?.traders) && data.traders.length > 0 ? data.traders : MOCK_TRADERS,
+  };
+}
+
+function normalizeFib(data) {
+  const fallback = computeFibonacci();
+  const btcPrice = Number.isFinite(data?.btcPrice)
+    ? data.btcPrice
+    : Number.isFinite(data?.currentPrice)
+      ? data.currentPrice
+      : fallback.btcPrice;
+  return {
+    ...fallback,
+    ...data,
+    btcPrice,
+    htfLevels: data?.htfLevels && Object.keys(data.htfLevels).length ? data.htfLevels : fallback.htfLevels,
+    ltfLevels: data?.ltfLevels && Object.keys(data.ltfLevels).length ? data.ltfLevels : fallback.ltfLevels,
+    confluenceZones: Array.isArray(data?.confluenceZones) ? data.confluenceZones : fallback.confluenceZones,
+    nearestZone: data?.nearestZone || null,
+    inOTE: Boolean(data?.inOTE),
+    confluenceScore: Number.isFinite(data?.confluenceScore) ? data.confluenceScore : fallback.confluenceScore,
+    entryQuality: data?.entryQuality || fallback.entryQuality,
+  };
+}
+
 function fmtUSD(n) {
   if (n >= 1e6) return "$" + (n/1e6).toFixed(1) + "M";
   if (n >= 1e3) return "$" + Math.round(n).toLocaleString();
@@ -148,10 +212,10 @@ function fmtUSD(n) {
 // ── Main Positions Component ───────────────────────────────────────────────
 
 export default function PositionsTab() {
-  const [regime, setRegime] = useState(computeMacroRegime());
-  const [smartMoney, setSmartMoney] = useState(computeSmartMoney());
-  const [fib, setFib] = useState(() => computeFibonacci(96400));
-  const [readiness, setReadiness] = useState(() => computeReadiness(computeMacroRegime(), computeSmartMoney(), computeFibonacci(96400)));
+  const [regime, setRegime] = useState(() => normalizeRegime());
+  const [smartMoney, setSmartMoney] = useState(() => normalizeSmartMoney());
+  const [fib, setFib] = useState(() => normalizeFib());
+  const [readiness, setReadiness] = useState(() => computeReadiness(normalizeRegime(), normalizeSmartMoney(), normalizeFib()));
   const [position] = useState(MOCK_POSITION);
   const [lastTrade] = useState("2025-04-14");
   const [cooldownDays] = useState(17);
@@ -168,10 +232,13 @@ export default function PositionsTab() {
           fetch("/api/smartmoney").then(r => r.json()),
           fetch("/api/fibonacci").then(r => r.json()),
         ]);
-        setRegime(regimeRes);
-        setSmartMoney(smRes);
-        setFib(fibRes);
-        setReadiness(computeReadiness(regimeRes, smRes, fibRes));
+        const nextRegime = normalizeRegime(regimeRes);
+        const nextSmartMoney = normalizeSmartMoney(smRes);
+        const nextFib = normalizeFib(fibRes);
+        setRegime(nextRegime);
+        setSmartMoney(nextSmartMoney);
+        setFib(nextFib);
+        setReadiness(computeReadiness(nextRegime, nextSmartMoney, nextFib));
         setDataSource(regimeRes.source === "binance_public" ? "live" : "mock");
       } catch (e) {
         console.error("positions data fetch failed:", e);
@@ -193,6 +260,7 @@ export default function PositionsTab() {
   }, [fib]);
 
   function drawFib(canvas, fib) {
+    if (!fib?.htfLevels || !fib?.ltfLevels || !Number.isFinite(fib.btcPrice)) return;
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.parentElement?.offsetWidth || 500;
     const H = 220;
@@ -287,13 +355,13 @@ export default function PositionsTab() {
       </div>
 
       {/* Trade Readiness Banner */}
-      <div style={{ background: readiness.score >= 85 ? "#00ff8811" : "#0a0f16", border: `1px solid ${readiness.color}44`, borderRadius: 8, padding: "14px 20px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div className="positions-readiness" style={{ background: readiness.score >= 85 ? "#00ff8811" : "#0a0f16", border: `1px solid ${readiness.color}44`, borderRadius: 8, padding: "14px 20px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <div style={{ fontSize: 10, color: "#335566", marginBottom: 4, letterSpacing: ".12em" }}>TRADE READINESS METER</div>
           <div style={{ fontSize: 32, fontWeight: 700, color: readiness.color, textShadow: `0 0 20px ${readiness.color}66`, lineHeight: 1 }}>{readiness.score}<span style={{ fontSize: 16, color: "#446688" }}>/100</span></div>
           <div style={{ fontSize: 11, color: readiness.color, marginTop: 4, letterSpacing: ".08em" }}>{readiness.score >= 85 ? "⚡ EXECUTION THRESHOLD REACHED" : readiness.score >= 65 ? "◉ MONITORING — APPROACHING SETUP" : "◎ WAITING FOR HIGH-CONVICTION SETUP"}</div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="positions-readiness-bars" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <ReadinessBar label="MACRO" score={readiness.breakdown?.macro || 0} max={35} color="#00cfff" />
           <ReadinessBar label="SMART MONEY" score={readiness.breakdown?.smartMoney || 0} max={35} color="#ffaa00" />
           <ReadinessBar label="FIB ZONE" score={readiness.breakdown?.fib || 0} max={30} color="#00ff88" />
@@ -306,7 +374,7 @@ export default function PositionsTab() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      <div className="positions-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
         {/* Macro Regime */}
         <div style={{ background: "#0a0f16", border: `1px solid ${regime.valid ? "#0d2030" : "#ff446633"}`, borderRadius: 8, padding: 14 }}>
@@ -375,7 +443,7 @@ export default function PositionsTab() {
             <div style={{ fontSize: 9, color: "#335566", marginBottom: 4, display: "grid", gridTemplateColumns: "1fr 50px 50px 40px 50px", gap: 4 }}>
               <span>TRADER</span><span>ROI</span><span>SORTINO</span><span>WR</span><span>BIAS</span>
             </div>
-            {smartMoney.traders.slice(0, 4).map((t, i) => (
+            {(smartMoney.traders || MOCK_TRADERS).slice(0, 4).map((t, i) => (
               <div key={i} style={{ fontSize: 10, display: "grid", gridTemplateColumns: "1fr 50px 50px 40px 50px", gap: 4, padding: "3px 0", borderBottom: "1px solid #0a1520" }}>
                 <span style={{ color: "#446688" }}>{t.name}</span>
                 <span style={{ color: "#00cfff" }}>+{t.roi}%</span>
@@ -401,9 +469,9 @@ export default function PositionsTab() {
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 12 }}>
+        <div className="positions-fib-grid" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 12 }}>
           <div>
-            <canvas ref={fibCanvasRef} width={500} height={220} style={{ width: "100%", height: "220px", display: "block" }} />
+            <canvas className="positions-canvas" ref={fibCanvasRef} width={500} height={220} style={{ width: "100%", height: "220px", display: "block" }} />
           </div>
           <div>
             <div style={{ fontSize: 9, color: "#335566", marginBottom: 8 }}>CONFLUENCE ZONES</div>
@@ -433,7 +501,7 @@ export default function PositionsTab() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      <div className="positions-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
         {/* Active Position */}
         <div style={{ background: "#0a0f16", border: `1px solid ${position.active ? "#00ff8833" : "#0d2030"}`, borderRadius: 8, padding: 14, boxShadow: position.active ? "0 0 20px #00ff8811" : "none" }}>
