@@ -7,25 +7,72 @@ const EXCLUDED_WORDS = new Set([
   "TOP", "HOT", "CEO", "USD", "ATH",
 ]);
 
-const REDDIT_SUBS = [
+/** Comma- or pipe-separated; optional `r/` / `@` prefixes stripped. Use in Vercel: `base,ethtrader` or `@lookonchain`. */
+function splitEnvList(raw) {
+  if (!raw || typeof raw !== "string") return [];
+  return raw
+    .split(/[,|]/)
+    .map((s) => s.trim().replace(/^@/, "").replace(/^r\//i, ""))
+    .filter(Boolean);
+}
+
+function mergeUnique(base, extras) {
+  const seen = new Set(base.map((s) => String(s).toLowerCase()));
+  const out = [...base];
+  for (const x of extras) {
+    const n = String(x).trim();
+    if (!n || seen.has(n.toLowerCase())) continue;
+    seen.add(n.toLowerCase());
+    out.push(n);
+  }
+  return out;
+}
+
+/** Subs with real discussion & market context; cheap alt/pump subs kept for retail flow. */
+const REDDIT_SUBS_BASE = [
   "CryptoCurrency",
-  "CryptoMoonShots",
-  "SatoshiStreetBets",
-  "solana",
+  "CryptoMarkets",
+  "BitcoinMarkets",
+  "Bitcoin",
+  "ethtrader",
+  "ethfinance",
   "ethereum",
+  "solana",
+  "cardano",
+  "cosmosnetwork",
+  "avalancheavax",
+  "polygonnetwork",
+  "arbitrum",
+  "Chainlink",
+  "Ripple",
   "altcoin",
   "defi",
   "memecoins",
+  "CryptoMoonShots",
+  "SatoshiStreetBets",
 ];
 
-const TELEGRAM_CHANNELS = [
-  "CryptoSignalsAll",
+const REDDIT_SUBS = mergeUnique(REDDIT_SUBS_BASE, splitEnvList(process.env.REDDIT_EXTRA_SUBS));
+
+/**
+ * Public t.me/s/… channels only. Prefer news, protocol & on-chain analytics over “signals” bots.
+ * Remove any that 404 or go private; add more the same way (username as in t.me/username).
+ */
+const TELEGRAM_CHANNELS_BASE = [
   "binance_announcements",
+  "coindesk",
+  "cointelegraph",
+  "theblockcrypto",
+  "defillama",
+  "lookonchain",
   "Uniswap",
   "SolanaFloor",
-  "dexsignals",
   "WhaleAlertio",
+  "WatcherGuru",
+  "WuBlockchain",
 ];
+
+const TELEGRAM_CHANNELS = mergeUnique(TELEGRAM_CHANNELS_BASE, splitEnvList(process.env.TELEGRAM_EXTRA_CHANNELS));
 
 let mentionCache;
 let mentionPending;
@@ -48,9 +95,9 @@ export async function getLiveMentions({ force = false } = {}) {
 async function collectLiveMentions() {
   const now = Date.now();
   const sources = await Promise.allSettled([
-    withTimeout(scrapeFourChan(), 5000, "4chan_biz"),
-    withTimeout(scrapeReddit(), 5000, "reddit"),
-    withTimeout(scrapeTelegram(), 5000, "telegram"),
+    withTimeout(scrapeFourChan(), 7000, "4chan_biz"),
+    withTimeout(scrapeReddit(), 14000, "reddit"),
+    withTimeout(scrapeTelegram(), 14000, "telegram"),
   ]);
 
   const sourceResults = sources.map((result, i) => {
