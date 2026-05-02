@@ -1,4 +1,5 @@
 import { TRACKED_TICKERS } from "../tokens";
+import { persistMentionSnapshotFromCounts } from "./persistMentionSnapshots";
 
 const EXCLUDED_WORDS = new Set([
   "IT", "ON", "OR", "AT", "BE", "DO", "IF", "IN", "IS", "NO", "OF", "SO",
@@ -69,6 +70,7 @@ async function collectLiveMentions() {
     timestamp: now,
   };
   mentionCache = { timestamp: now, data };
+  persistMentionSnapshotFromCounts(counts).catch(() => {});
   return data;
 }
 

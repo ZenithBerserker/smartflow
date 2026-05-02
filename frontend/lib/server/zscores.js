@@ -117,8 +117,7 @@ function resolveMentionTrendRows(supabaseRowsRaw, lowerBoundUnix) {
       mention_trends: {
         source: "none",
         detail: "no_credentials",
-        hint_short:
-          "No Supabase env and local data/mentions.db has no rows in ~61d. Set SUPABASE_URL + SUPABASE_KEY or run Reddit/4chan scrapers.",
+        hint_short: null,
       },
     };
   }
@@ -129,8 +128,7 @@ function resolveMentionTrendRows(supabaseRowsRaw, lowerBoundUnix) {
       mention_trends: {
         source: "none",
         detail: "supabase_error",
-        hint_short:
-          "Supabase mentions query failed. Check keys, table mentions (ticker, count, timestamp), and logs.",
+        hint_short: null,
       },
     };
   }
@@ -140,8 +138,7 @@ function resolveMentionTrendRows(supabaseRowsRaw, lowerBoundUnix) {
     mention_trends: {
       source: "none",
       detail: "empty",
-      hint_short:
-        "Supabase returned no rows this window (~61d). Backfill/sync the mentions table to enable Δ24h · Δ7d · Δ30d and the chart.",
+      hint_short: null,
     },
   };
 }

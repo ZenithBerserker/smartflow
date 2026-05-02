@@ -115,7 +115,7 @@ function buildChartStudies(candles, signalTimeframe=null) {
   return {nw,zones,macd,markers};
 }
 
-function drawMentionsVolumeChart(canvas, values, emptyHint) {
+function drawMentionsVolumeChart(canvas, values) {
   if (!canvas) return;
   const arr = Array.isArray(values) && values.length > 0 ? values : [];
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
@@ -131,26 +131,10 @@ function drawMentionsVolumeChart(canvas, values, emptyHint) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = "#070a0f";
   ctx.fillRect(0, 0, W, H);
+  if (arr.length === 0) return;
+
   ctx.fillStyle = "#335566";
   ctx.font = "10px 'Share Tech Mono',monospace";
-
-  if (arr.length === 0) {
-    const hint =
-      emptyHint?.trim() ||
-      "Stored history unavailable — deltas + chart need ~61 days of ticker rows (Supabase or data/mentions.db).";
-    const padX = 10;
-    const lineH = 12;
-    const maxChars = Math.max(32, Math.floor((W - 2 * padX) / 5.6));
-    const lines = [];
-    for (let i = 0; i < hint.length; i += maxChars) {
-      lines.push(hint.slice(i, i + maxChars).trimStart());
-      if (lines.length >= 3) break;
-    }
-    lines.forEach((ln, idx) => {
-      ctx.fillText(ln || " ", padX, 22 + idx * lineH);
-    });
-    return;
-  }
 
   const padL = 6;
   const padR = 6;
@@ -188,7 +172,6 @@ function drawMentionsVolumeChart(canvas, values, emptyHint) {
 export default function Home() {
   const [selected,setSelected]=useState("BTC");
   const [zscores,setZscores]=useState([]);
-  const [mentionTrendMeta,setMentionTrendMeta]=useState(null);
   const [result,setResult]=useState(null);
   const [loading,setLoading]=useState(false);
   const [tab,setTab]=useState("pipeline");
@@ -221,7 +204,6 @@ export default function Home() {
         const r=await fetch("/api/zscores");
         const d=await r.json();
         setZscores(d.tickers||[]);
-        setMentionTrendMeta(d.mention_trends||null);
       }catch{}
     };
     f(); const iv=setInterval(f,15000); return()=>clearInterval(iv);
@@ -259,13 +241,12 @@ export default function Home() {
   useEffect(()=>{
     const z=zscores.find(x=>x.ticker===selected);
     const series=z?.mentions_daily_30d;
-    const redraw=()=>
-      drawMentionsVolumeChart(mentionsHistRef.current, series, mentionTrendMeta?.hint_short ?? null);
+    const redraw=()=>drawMentionsVolumeChart(mentionsHistRef.current, series);
     redraw();
     const onResize=()=>redraw();
     window.addEventListener("resize", onResize);
     return()=>window.removeEventListener("resize", onResize);
-  },[selected, zscores, mentionTrendMeta]);
+  },[selected, zscores]);
 
   useEffect(()=>{
     const onResize=()=>setChartRevision(v=>v+1);
@@ -852,11 +833,12 @@ export default function Home() {
             <div style={{fontSize:10,color:"#336688",fontFamily:"'Share Tech Mono',monospace",letterSpacing:".08em"}}>Mentions · {selected}</div>
             <button onClick={()=>fetchMentions(selected,true)} disabled={mentionLoading} style={{padding:"4px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#446688",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:mentionLoading?"not-allowed":"pointer",borderRadius:3}}>Refresh</button>
           </div>
-          <div className="mention-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+          <div className="mention-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:10}}>
             {[
               ["Total",mentionData?.total],
               ["Reddit",mentionData?.source_counts?.reddit],
               ["4chan",mentionData?.source_counts?.["4chan_biz"]],
+              ["Telegram",mentionData?.source_counts?.telegram],
             ].map(([label,val])=>(
               <div key={label} style={{textAlign:"center"}}>
                 <div style={{fontSize:10,color:"#335566",fontFamily:"'Share Tech Mono',monospace",marginBottom:4}}>{label}</div>
@@ -870,24 +852,6 @@ export default function Home() {
             ))}
           </div>
           {mentionData?.error&&<div style={{fontSize:10,color:"#ff4466",fontFamily:"'Share Tech Mono',monospace",marginTop:8}}>{mentionData.error}</div>}
-
-          <div style={{fontSize:9,color:"#223344",fontFamily:"'Share Tech Mono',monospace",marginTop:12,lineHeight:1.4}}>
-            Live totals (above) scrape Reddit/4chan on refresh. Stored trend Δ24h · Δ7d · Δ30d and the rolling chart read history from{' '}
-            <strong style={{fontWeight:600,color:"#335566"}}>Supabase</strong> (<code style={{fontSize:9}}>mentions</code> table){' '}or fallback{' '}
-            <strong style={{fontWeight:600,color:"#335566"}}>data/mentions.db</strong>
-            {(mentionTrendMeta?.source&&mentionTrendMeta.source!=="none")?
-              <>
-                {' '}·{' '}
-                <span style={{color:mentionTrendMeta.source==="sqlite"?"#00cfff":"#99bbcc"}}>
-                  sourced: {mentionTrendMeta.source==="sqlite"?"local SQLite DB":"Supabase"}
-                </span>
-              </>:''}
-            {' '}— need ~61 days of rows for meaningful 30d Δ.
-          </div>
-          {mentionTrendMeta?.hint_short&&!zscores.find(z=>z.ticker===selected)?.mentions_daily_30d?.length?
-            <div style={{fontSize:9,color:"#446688",fontFamily:"'Share Tech Mono',monospace",marginTop:6,lineHeight:1.45,maxWidth:720}}>
-              {mentionTrendMeta.hint_short}
-            </div>:null}
 
           <div className="mention-change-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:14}}>
             {[
