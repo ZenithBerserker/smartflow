@@ -198,6 +198,8 @@ export default function Home() {
   const chartHoverRef=useRef(null);
   const chartDragRef=useRef(null);
   const mentionsHistRef=useRef(null);
+  const priceFetchSeqRef=useRef(0);
+  const priceFetchAbortRef=useRef(null);
 
   useEffect(()=>{
     const f=async()=>{ try{ const r=await fetch("/api/zscores"); const d=await r.json(); setZscores(d.tickers||[]); }catch{} };
@@ -227,6 +229,13 @@ export default function Home() {
   },[chartTf]);
 
   useEffect(()=>{
+    return ()=>{
+      priceFetchAbortRef.current?.abort();
+      priceFetchAbortRef.current=null;
+    };
+  },[]);
+
+  useEffect(()=>{
     const z=zscores.find(x=>x.ticker===selected);
     const series=z?.mentions_daily_30d;
     const redraw=()=>drawMentionsVolumeChart(mentionsHistRef.current, series);
@@ -243,14 +252,26 @@ export default function Home() {
   },[]);
 
   const fetchPrice=async(ticker, timeframe)=>{
+    const seq = ++priceFetchSeqRef.current;
+    priceFetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    priceFetchAbortRef.current = ac;
     setPriceLoading(true);
-    const tf = timeframe || chartTf;
+    const tf = timeframe ?? chartTf;
     try{
-      const r=await fetch(`/api/price?ticker=${ticker}&tf=${tf}`);
+      const q=`ticker=${encodeURIComponent(ticker)}&tf=${encodeURIComponent(tf)}`;
+      const r=await fetch(`/api/price?${q}`,{ signal: ac.signal });
       const d=await r.json();
+      if (seq !== priceFetchSeqRef.current) return;
       setPriceData(d);
-    }catch(e){ console.error(e); }
-    setPriceLoading(false);
+    }catch(e){
+      if (e?.name === "AbortError") return;
+      if (seq !== priceFetchSeqRef.current) return;
+      console.error(e);
+    }
+    finally{
+      if (seq === priceFetchSeqRef.current) setPriceLoading(false);
+    }
   };
 
   const fetchLongShort=async(ticker)=>{
