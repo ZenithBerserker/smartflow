@@ -66,6 +66,86 @@ async function fetchSupabaseMentionsSince(lowerBoundUnix) {
   }
 }
 
+/** Local scrapers write `{repo}/data/mentions.db` — use when Supabase is empty or unavailable. */
+function loadSqliteMentionsSince(lowerBoundUnix) {
+  try {
+    const dbPath = path.resolve(process.cwd(), "..", "data", "mentions.db");
+    if (!fs.existsSync(dbPath)) return [];
+    const Database = require("better-sqlite3");
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const rows = db
+      .prepare("SELECT ticker, count, timestamp FROM mentions WHERE timestamp >= ?")
+      .all(lowerBoundUnix)
+      .map((r) => ({
+        ticker: String(r.ticker || "").toUpperCase(),
+        count: Number(r.count || 0),
+        timestamp: Number(r.timestamp),
+      }))
+      .filter((r) => r.ticker && Number.isFinite(r.timestamp));
+    db.close();
+    return rows;
+  } catch (e) {
+    console.warn("[zscores] sqlite mentions read skipped:", e.message);
+    return [];
+  }
+}
+
+/**
+ * Rows for deltas + 30d chart: prefer Supabase; else scrape SQLite.
+ */
+function resolveMentionTrendRows(supabaseRowsRaw, lowerBoundUnix) {
+  const hasSupabaseEnv = !!(getEnv("SUPABASE_URL") && getEnv("SUPABASE_KEY"));
+
+  if (Array.isArray(supabaseRowsRaw) && supabaseRowsRaw.length > 0) {
+    return {
+      rows: supabaseRowsRaw,
+      mention_trends: { source: "supabase", detail: null, hint_short: null },
+    };
+  }
+
+  const sqliteRows = loadSqliteMentionsSince(lowerBoundUnix);
+  if (sqliteRows.length > 0) {
+    return {
+      rows: sqliteRows,
+      mention_trends: { source: "sqlite", detail: null, hint_short: null },
+    };
+  }
+
+  if (!hasSupabaseEnv) {
+    return {
+      rows: [],
+      mention_trends: {
+        source: "none",
+        detail: "no_credentials",
+        hint_short:
+          "No Supabase env and local data/mentions.db has no rows in ~61d. Set SUPABASE_URL + SUPABASE_KEY or run Reddit/4chan scrapers.",
+      },
+    };
+  }
+
+  if (supabaseRowsRaw === null) {
+    return {
+      rows: [],
+      mention_trends: {
+        source: "none",
+        detail: "supabase_error",
+        hint_short:
+          "Supabase mentions query failed. Check keys, table mentions (ticker, count, timestamp), and logs.",
+      },
+    };
+  }
+
+  return {
+    rows: [],
+    mention_trends: {
+      source: "none",
+      detail: "empty",
+      hint_short:
+        "Supabase returned no rows this window (~61d). Backfill/sync the mentions table to enable Δ24h · Δ7d · Δ30d and the chart.",
+    },
+  };
+}
+
 function buildTickerTrendMap(rows, nowSec) {
   const safeRows = rows && rows.length ? rows : [];
   const map = {};
@@ -92,40 +172,47 @@ export async function getZscores() {
     fetchSupabaseMentionsSince(trendLowerBound),
   ]);
 
-  const supabaseRows = Array.isArray(supabaseRowsRaw) ? supabaseRowsRaw : null;
-  const trendMap = buildTickerTrendMap(supabaseRows || [], nowSec);
+  const { rows: trendRows, mention_trends } = resolveMentionTrendRows(supabaseRowsRaw, trendLowerBound);
+  const trendMap = buildTickerTrendMap(trendRows || [], nowSec);
 
   if (live) {
     return {
       tickers: mergeTrendIntoRows(live.tickers, trendMap),
       source: live.source,
       sources: live.sources.map(({ source, scanned, error }) => ({ source, scanned, error })),
+      mention_trends,
     };
   }
 
   const supabaseUrl = getEnv("SUPABASE_URL");
   const supabaseKey = getEnv("SUPABASE_KEY");
+  const hasSupabaseConfigured = !!(supabaseUrl && supabaseKey);
 
-  if (!supabaseUrl || !supabaseKey) {
-    return {
-      tickers: mergeTrendIntoRows(unavailableRows(), trendMap),
-      source: "unavailable",
-      reason: "SUPABASE_URL or SUPABASE_KEY not set",
-    };
-  }
+  const dataSeven = trendRows.filter((r) => r.timestamp >= sevenBoundary);
 
-  const dataSeven = supabaseRows ? supabaseRows.filter((r) => r.timestamp >= sevenBoundary) : [];
-
-  if (!supabaseRows || dataSeven.length === 0) {
+  if (trendRows.length === 0) {
     const reason =
-      supabaseRows === null
+      mention_trends.detail === "supabase_error"
         ? "Could not query Supabase mentions (check credentials or logs)"
-        : "No mention data found in Supabase for the recent window";
+        : hasSupabaseConfigured
+          ? "No mention rows in Supabase or local SQLite for ~61 days"
+          : "SUPABASE_URL / SUPABASE_KEY not set — and data/mentions.db has no usable history rows";
 
     return {
       tickers: mergeTrendIntoRows(unavailableRows(), trendMap),
       source: "unavailable",
       reason,
+      mention_trends,
+    };
+  }
+
+  if (dataSeven.length === 0) {
+    return {
+      tickers: mergeTrendIntoRows(unavailableRows(), trendMap),
+      source: mention_trends.source === "sqlite" ? "sqlite_history" : "supabase_history",
+      reason:
+        "No stored rows in the last 7 days (rolling deltas/chart below still reflect older history)",
+      mention_trends,
     };
   }
 
@@ -158,7 +245,8 @@ export async function getZscores() {
 
   return {
     tickers: mergeTrendIntoRows(results, trendMap),
-    source: "supabase",
+    source: mention_trends.source === "sqlite" ? "sqlite_history" : "supabase",
+    mention_trends,
   };
 }
 
@@ -201,7 +289,7 @@ export async function getZscoreForTicker(ticker) {
   const data = await getZscores();
   const normalized = ticker.toUpperCase();
   const row = data.tickers.find((item) => item.ticker === normalized);
-  if (row) return { ...row, source: data.source, reason: data.reason };
+  if (row) return { ...row, source: data.source, reason: data.reason, mention_trends: data.mention_trends };
 
   const fallback =
     unavailableRows().find((item) => item.ticker === normalized) || {
@@ -217,6 +305,7 @@ export async function getZscoreForTicker(ticker) {
     ...emptyMentionTrends(),
     source: data.source,
     reason: data.reason || "Ticker not present in tracked set",
+    mention_trends: data.mention_trends,
   };
 }
 
