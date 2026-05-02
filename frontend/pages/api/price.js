@@ -24,7 +24,12 @@ export default async function handler(req, res) {
   const { limit } = getCandleConfig(tf);
 
   try {
-    const cgQuote = resolvedMeta?.coingeckoId ? await getCoinGeckoQuote(resolvedMeta.coingeckoId) : null;
+    const [cgQuote, cgIntradayChanges] = resolvedMeta?.coingeckoId
+      ? await Promise.all([
+          getCoinGeckoQuote(resolvedMeta.coingeckoId),
+          getCoinGeckoIntradayChanges(resolvedMeta.coingeckoId),
+        ])
+      : [null, null];
 
     if (shouldUseCoinGeckoOnly && cgQuote) {
       let candles = await getBinanceCandles(ticker, tf);
@@ -35,7 +40,9 @@ export default async function handler(req, res) {
         currentTf: tf,
         currentCandles: candles,
       });
-      return res.status(200).json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, candleSource));
+      return res
+        .status(200)
+        .json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, candleSource, cgIntradayChanges));
     }
 
     // Step 1 — get pair address from token address
@@ -79,14 +86,18 @@ export default async function handler(req, res) {
     if (!meta && cgQuote) {
       const candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
       const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, { coingeckoId: resolvedMeta.coingeckoId });
-      return res.status(200).json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal));
+      return res
+        .status(200)
+        .json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, "coingecko", cgIntradayChanges));
     }
 
     if (!pairData) {
       if (cgQuote) {
         const candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
         const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, { coingeckoId: resolvedMeta.coingeckoId });
-        return res.status(200).json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal));
+        return res
+          .status(200)
+          .json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, "coingecko", cgIntradayChanges));
       }
       return res.status(404).json({ ticker, error: "No live price source found", candles: [], timestamp: Date.now() });
     }
@@ -267,12 +278,17 @@ async function resolveCoinGeckoMeta(ticker) {
   }
 }
 
-function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal, candleSource = "coingecko") {
+function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal, candleSource = "coingecko", intraday = null) {
   return {
     ticker,
     name: meta?.name || ticker,
     price_usd: row.usd,
-    price_change: { m5: 0, h1: 0, h6: 0, h24: row.usd_24h_change || 0 },
+    price_change: {
+      m5: intraday?.m5 ?? 0,
+      h1: intraday?.h1 ?? 0,
+      h6: intraday?.h6 ?? 0,
+      h24: row.usd_24h_change || 0,
+    },
     volume_24h: row.usd_24h_vol || 0,
     volume_1h: 0,
     liquidity_usd: 0,
@@ -308,6 +324,49 @@ async function getCoinGeckoCandles(id, tf) {
   } catch {
     return [];
   }
+}
+
+async function getCoinGeckoIntradayChanges(id) {
+  try {
+    const chartUrl = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=1`;
+    const chartRes = await fetch(chartUrl, {
+      headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!chartRes.ok) return null;
+    const chart = await chartRes.json();
+    const prices = (chart?.prices || [])
+      .map(([t, p]) => [Number(t), Number(p)])
+      .filter(([t, p]) => Number.isFinite(t) && Number.isFinite(p))
+      .sort((a, b) => a[0] - b[0]);
+    if (prices.length < 2) return null;
+
+    return {
+      m5: pctChangeFromSeries(prices, 5 * 60 * 1000),
+      h1: pctChangeFromSeries(prices, 60 * 60 * 1000),
+      h6: pctChangeFromSeries(prices, 6 * 60 * 60 * 1000),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function pctChangeFromSeries(prices, windowMs) {
+  if (!prices || prices.length < 2) return null;
+  const [latestTs, latestPrice] = prices[prices.length - 1];
+  if (!Number.isFinite(latestPrice) || latestPrice <= 0) return null;
+
+  const targetTs = latestTs - windowMs;
+  let referencePrice = null;
+  for (let i = prices.length - 1; i >= 0; i--) {
+    if (prices[i][0] <= targetTs) {
+      referencePrice = prices[i][1];
+      break;
+    }
+  }
+  if (!Number.isFinite(referencePrice) || referencePrice <= 0) return null;
+
+  return Math.round((((latestPrice - referencePrice) / referencePrice) * 100) * 100) / 100;
 }
 
 async function getBinanceCandles(ticker, tf) {
