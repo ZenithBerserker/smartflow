@@ -2,6 +2,9 @@
 // Real price + OHLC candle data from DEXScreener — completely free, no key needed
 import { getTokenMeta } from "../../lib/tokens";
 
+const PRICE_CACHE_TTL_MS = 15000;
+const priceResponseCache = new Map();
+
 const BINANCE_SYMBOLS = {
   BTC: "BTCUSDT", ETH: "ETHUSDT", SOL: "SOLUSDT", DOGE: "DOGEUSDT",
   XRP: "XRPUSDT", ADA: "ADAUSDT", BNB: "BNBUSDT", DOT: "DOTUSDT",
@@ -17,6 +20,17 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const ticker = (req.query.ticker || "PEPE").toUpperCase();
   const tf = normalizeTimeframe(req.query.tf || "1d"); // 15m, 1h, 4h, 1d, 1w, 1m
+  const cacheKey = `${ticker}:${tf}`;
+  const cached = priceResponseCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL_MS) {
+    return res.status(200).json(cached.data);
+  }
+
+  const respondWithData = (data) => {
+    priceResponseCache.set(cacheKey, { ts: Date.now(), data });
+    return res.status(200).json(data);
+  };
+
   const meta = getTokenMeta(ticker);
   const resolvedMeta = meta || await resolveCoinGeckoMeta(ticker);
   const shouldUseCoinGeckoOnly = resolvedMeta?.chain === "native";
@@ -40,9 +54,9 @@ export default async function handler(req, res) {
         currentTf: tf,
         currentCandles: candles,
       });
-      return res
-        .status(200)
-        .json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, candleSource, cgIntradayChanges));
+      return respondWithData(
+        buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, candleSource, cgIntradayChanges)
+      );
     }
 
     // Step 1 — get pair address from token address
@@ -86,18 +100,18 @@ export default async function handler(req, res) {
     if (!meta && cgQuote) {
       const candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
       const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, { coingeckoId: resolvedMeta.coingeckoId });
-      return res
-        .status(200)
-        .json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, "coingecko", cgIntradayChanges));
+      return respondWithData(
+        buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, "coingecko", cgIntradayChanges)
+      );
     }
 
     if (!pairData) {
       if (cgQuote) {
         const candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
         const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, { coingeckoId: resolvedMeta.coingeckoId });
-        return res
-          .status(200)
-          .json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, "coingecko", cgIntradayChanges));
+        return respondWithData(
+          buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, "coingecko", cgIntradayChanges)
+        );
       }
       return res.status(404).json({ ticker, error: "No live price source found", candles: [], timestamp: Date.now() });
     }
@@ -156,7 +170,7 @@ export default async function handler(req, res) {
       currentCandles: candles,
     });
 
-    return res.status(200).json({
+    return respondWithData({
       ticker,
       name: pairData.baseToken?.name || ticker,
       price_usd: price,
@@ -183,6 +197,9 @@ export default async function handler(req, res) {
 
   } catch (e) {
     console.error("[price] error:", e.message);
+    if (cached?.data) {
+      return res.status(200).json(cached.data);
+    }
     return res.status(502).json({ ticker, error: e.message, candles: [], timestamp: Date.now() });
   }
 }
