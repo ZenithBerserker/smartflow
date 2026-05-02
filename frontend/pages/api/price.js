@@ -45,17 +45,37 @@ export default async function handler(req, res) {
         ])
       : [null, null];
 
-    if (shouldUseCoinGeckoOnly && cgQuote) {
+    if (shouldUseCoinGeckoOnly) {
+      const [binanceQuote, binanceIntraday] = await Promise.all([
+        getBinanceQuote(ticker),
+        getBinanceIntradayChanges(ticker),
+      ]);
       let candles = await getBinanceCandles(ticker, tf);
       let candleSource = candles.length > 0 ? "binance_spot" : "coingecko";
       if (candles.length === 0) candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
-      const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, {
+      const priceUsd =
+        cgQuote?.usd ??
+        binanceQuote?.price ??
+        candles[candles.length - 1]?.c ??
+        0;
+      const quoteRow = {
+        usd: priceUsd,
+        usd_24h_change: cgQuote?.usd_24h_change ?? binanceQuote?.h24 ?? 0,
+        usd_24h_vol: cgQuote?.usd_24h_vol ?? 0,
+        usd_market_cap: cgQuote?.usd_market_cap ?? 0,
+      };
+      const intraday = {
+        m5: cgIntradayChanges?.m5 ?? binanceIntraday?.m5 ?? 0,
+        h1: cgIntradayChanges?.h1 ?? binanceIntraday?.h1 ?? 0,
+        h6: cgIntradayChanges?.h6 ?? binanceIntraday?.h6 ?? 0,
+      };
+      const fib_signal = await buildFibonacciSignal(ticker, priceUsd, {
         coingeckoId: resolvedMeta.coingeckoId,
         currentTf: tf,
         currentCandles: candles,
       });
       return respondWithData(
-        buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, candleSource, cgIntradayChanges)
+        buildCoinGeckoResponse(ticker, resolvedMeta, quoteRow, candles, fib_signal, candleSource, intraday)
       );
     }
 
@@ -384,6 +404,59 @@ function pctChangeFromSeries(prices, windowMs) {
   if (!Number.isFinite(referencePrice) || referencePrice <= 0) return null;
 
   return Math.round((((latestPrice - referencePrice) / referencePrice) * 100) * 100) / 100;
+}
+
+async function getBinanceQuote(ticker) {
+  const symbol = BINANCE_SYMBOLS[ticker];
+  if (!symbol) return null;
+  try {
+    const r = await fetch(
+      `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`,
+      {
+        headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    const price = Number(d?.lastPrice);
+    const h24 = Number(d?.priceChangePercent);
+    return {
+      price: Number.isFinite(price) ? price : null,
+      h24: Number.isFinite(h24) ? h24 : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getBinanceIntradayChanges(ticker) {
+  const symbol = BINANCE_SYMBOLS[ticker];
+  if (!symbol) return null;
+  try {
+    const r = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=500`,
+      {
+        headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || rows.length < 2) return null;
+    const prices = rows
+      .map((c) => [Number(c[0]), Number(c[4])])
+      .filter(([t, p]) => Number.isFinite(t) && Number.isFinite(p))
+      .sort((a, b) => a[0] - b[0]);
+    if (prices.length < 2) return null;
+    return {
+      m5: pctChangeFromSeries(prices, 5 * 60 * 1000),
+      h1: pctChangeFromSeries(prices, 60 * 60 * 1000),
+      h6: pctChangeFromSeries(prices, 6 * 60 * 60 * 1000),
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function getBinanceCandles(ticker, tf) {
