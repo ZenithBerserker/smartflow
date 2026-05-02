@@ -2,6 +2,17 @@
 // Real price + OHLC candle data from DEXScreener — completely free, no key needed
 import { getTokenMeta } from "../../lib/tokens";
 
+const BINANCE_SYMBOLS = {
+  BTC: "BTCUSDT", ETH: "ETHUSDT", SOL: "SOLUSDT", DOGE: "DOGEUSDT",
+  XRP: "XRPUSDT", ADA: "ADAUSDT", BNB: "BNBUSDT", DOT: "DOTUSDT",
+  LTC: "LTCUSDT", TRX: "TRXUSDT", ICP: "ICPUSDT", XLM: "XLMUSDT",
+  FIL: "FILUSDT", HBAR: "HBARUSDT", ALGO: "ALGOUSDT", BCH: "BCHUSDT",
+  ETC: "ETCUSDT", XMR: "XMRUSDT", VET: "VETUSDT", EOS: "EOSUSDT",
+  EGLD: "EGLDUSDT", KAVA: "KAVAUSDT", ZEC: "ZECUSDT", DASH: "DASHUSDT",
+  NEO: "NEOUSDT", AVAX: "AVAXUSDT", SUI: "SUIUSDT", APT: "APTUSDT",
+  NEAR: "NEARUSDT", ATOM: "ATOMUSDT", RUNE: "RUNEUSDT", SEI: "SEIUSDT",
+};
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   const ticker = (req.query.ticker || "PEPE").toUpperCase();
@@ -16,13 +27,15 @@ export default async function handler(req, res) {
     const cgQuote = resolvedMeta?.coingeckoId ? await getCoinGeckoQuote(resolvedMeta.coingeckoId) : null;
 
     if (shouldUseCoinGeckoOnly && cgQuote) {
-      const candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
+      let candles = await getBinanceCandles(ticker, tf);
+      let candleSource = candles.length > 0 ? "binance_spot" : "coingecko";
+      if (candles.length === 0) candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
       const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, {
         coingeckoId: resolvedMeta.coingeckoId,
         currentTf: tf,
         currentCandles: candles,
       });
-      return res.status(200).json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal));
+      return res.status(200).json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal, candleSource));
     }
 
     // Step 1 — get pair address from token address
@@ -254,7 +267,7 @@ async function resolveCoinGeckoMeta(ticker) {
   }
 }
 
-function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal) {
+function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal, candleSource = "coingecko") {
   return {
     ticker,
     name: meta?.name || ticker,
@@ -274,7 +287,7 @@ function buildCoinGeckoResponse(ticker, meta, row, candles, fib_signal) {
     pair_address: "",
     candles,
     candle_count: candles.length,
-    candle_source: candles.length > 0 ? "coingecko" : "unavailable",
+    candle_source: candles.length > 0 ? candleSource : "unavailable",
     technicals: calculateTechnicals(candles, null),
     fib_signal,
     timestamp: Date.now(),
@@ -292,6 +305,37 @@ async function getCoinGeckoCandles(id, tf) {
     if (!chartRes.ok) return [];
     const chart = await chartRes.json();
     return buildCandlesFromCoinGecko(chart.prices || [], chart.total_volumes || [], tf);
+  } catch {
+    return [];
+  }
+}
+
+async function getBinanceCandles(ticker, tf) {
+  const symbol = BINANCE_SYMBOLS[ticker];
+  if (!symbol) return [];
+  try {
+    const { limit } = getCandleConfig(tf);
+    const r = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${getBinanceInterval(tf)}&limit=${Math.min(limit, 1000)}`,
+      {
+        headers: { "Accept": "application/json", "User-Agent": "BlackCat/1.0" },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (!r.ok) return [];
+    const rows = await r.json();
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map(c => ({
+        t: Number(c[0]),
+        o: parseFloat(c[1]),
+        h: parseFloat(c[2]),
+        l: parseFloat(c[3]),
+        c: parseFloat(c[4]),
+        v: parseFloat(c[5] || 0),
+      }))
+      .filter(c => [c.t, c.o, c.h, c.l, c.c].every(Number.isFinite))
+      .sort((a, b) => a.t - b.t);
   } catch {
     return [];
   }
@@ -357,6 +401,11 @@ function getGeckoTimeframe(tf) {
   if (tf === "4h") return { timeframe: "hour", aggregate: 4 };
   if (tf === "1w" || tf === "1m") return { timeframe: "day", aggregate: 1 };
   return { timeframe: "day", aggregate: 1 };
+}
+
+function getBinanceInterval(tf) {
+  const map = { "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w", "1m": "1M" };
+  return map[tf] || "1d";
 }
 
 function getSourceCandleLimit(tf, displayLimit) {

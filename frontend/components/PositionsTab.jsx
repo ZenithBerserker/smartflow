@@ -126,21 +126,6 @@ function computeReadiness(regime, smartMoney, fib) {
   };
 }
 
-const MOCK_POSITION = {
-  active: true,
-  direction: "LONG",
-  asset: "BTC/USDT",
-  entry: 91240,
-  stop: 88350,
-  target: 108000,
-  leverage: 2,
-  daysHeld: 11,
-  unrealizedPnl: 5.72,
-  rr: "1:5.8",
-  fibEntry: "0.618",
-  regime: "CAPITULATION_RECOVERY",
-};
-
 function normalizeRegime(data) {
   const fallback = computeMacroRegime();
   return {
@@ -204,9 +189,43 @@ function normalizeFib(data) {
 }
 
 function fmtUSD(n) {
+  if (!Number.isFinite(n)) return "--";
   if (n >= 1e6) return "$" + (n/1e6).toFixed(1) + "M";
   if (n >= 1e3) return "$" + Math.round(n).toLocaleString();
   return "$" + n.toFixed(2);
+}
+
+function buildLivePositionPlan(regime, smartMoney, fib, readiness) {
+  const current = fib.btcPrice;
+  const nearest = fib.nearestZone;
+  const longBias = smartMoney.battleScore >= -20;
+  const direction = longBias ? "LONG" : "SHORT";
+  const entry = nearest?.price || current;
+  const riskDistance = Math.max(Math.abs(current - entry), current * 0.025);
+  const stop = direction === "LONG" ? entry - riskDistance : entry + riskDistance;
+  const target = direction === "LONG"
+    ? Math.max(fib.ltfHigh || current * 1.08, entry + riskDistance * 2.5)
+    : Math.min(fib.ltfLow || current * 0.92, entry - riskDistance * 2.5);
+  const reward = Math.abs(target - entry);
+  const risk = Math.abs(entry - stop);
+  const rr = risk > 0 ? `1:${Math.max(0.1, reward / risk).toFixed(1)}` : "--";
+
+  return {
+    active: readiness.score >= 85,
+    direction,
+    asset: "BTC/USDT",
+    entry,
+    stop,
+    target,
+    leverage: readiness.score >= 65 ? 2 : 1,
+    rr,
+    fibEntry: nearest?.level || "nearest",
+    regime: regime.state || regime.label,
+    currentPrice: current,
+    distanceToEntryPct: Number.isFinite(entry) && Number.isFinite(current) && current > 0
+      ? ((entry - current) / current) * 100
+      : null,
+  };
 }
 
 // ── Main Positions Component ───────────────────────────────────────────────
@@ -216,9 +235,8 @@ export default function PositionsTab() {
   const [smartMoney, setSmartMoney] = useState(() => normalizeSmartMoney());
   const [fib, setFib] = useState(() => normalizeFib());
   const [readiness, setReadiness] = useState(() => computeReadiness(normalizeRegime(), normalizeSmartMoney(), normalizeFib()));
-  const [position] = useState(MOCK_POSITION);
-  const [lastTrade] = useState("2025-04-14");
-  const [cooldownDays] = useState(17);
+  const [position, setPosition] = useState(() => buildLivePositionPlan(normalizeRegime(), normalizeSmartMoney(), normalizeFib(), computeReadiness(normalizeRegime(), normalizeSmartMoney(), normalizeFib())));
+  const cooldownDays = null;
   const [loading, setLoading] = useState(true);
   const [dataSource, setDataSource] = useState("loading...");
   const fibCanvasRef = useRef(null);
@@ -238,8 +256,10 @@ export default function PositionsTab() {
         setRegime(nextRegime);
         setSmartMoney(nextSmartMoney);
         setFib(nextFib);
-        setReadiness(computeReadiness(nextRegime, nextSmartMoney, nextFib));
-        setDataSource(regimeRes.source === "binance_public" ? "live" : "mock");
+        const nextReadiness = computeReadiness(nextRegime, nextSmartMoney, nextFib);
+        setReadiness(nextReadiness);
+        setPosition(buildLivePositionPlan(nextRegime, nextSmartMoney, nextFib, nextReadiness));
+        setDataSource([regimeRes.source, smRes.source, fibRes.source].every(source => source && !String(source).includes("mock")) ? "live" : "partial");
       } catch (e) {
         console.error("positions data fetch failed:", e);
         setDataSource("mock");
@@ -350,7 +370,7 @@ export default function PositionsTab() {
       {/* Data source badge */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
         <span style={{ fontSize: 9, fontFamily: mono, color: dataSource === "live" ? "#00ff88" : dataSource === "loading..." ? "#ffaa00" : "#446688", padding: "2px 8px", border: `1px solid ${dataSource === "live" ? "#00ff8833" : "#1a2a3a"}`, borderRadius: 4 }}>
-          {loading ? "⟳ fetching live data..." : dataSource === "live" ? "◉ live — binance public" : "◎ mock data"}
+          {loading ? "⟳ fetching live data..." : dataSource === "live" ? "◉ live — public market data" : "◎ partial live data"}
         </span>
       </div>
 
@@ -368,9 +388,9 @@ export default function PositionsTab() {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10, color: "#335566", marginBottom: 4 }}>COOLDOWN</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: cooldownDays > 20 ? "#ff4466" : "#ffaa00" }}>{cooldownDays}d</div>
-          <div style={{ fontSize: 10, color: "#335566" }}>since last trade</div>
-          <div style={{ fontSize: 10, color: "#335566", marginTop: 4 }}>quota: 0/1 this month</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#446688" }}>{cooldownDays === null ? "--" : `${cooldownDays}d`}</div>
+          <div style={{ fontSize: 10, color: "#335566" }}>account not connected</div>
+          <div style={{ fontSize: 10, color: "#335566", marginTop: 4 }}>quota: live signal only</div>
         </div>
       </div>
 
@@ -503,13 +523,12 @@ export default function PositionsTab() {
 
       <div className="positions-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
-        {/* Active Position */}
+        {/* Live Position Plan */}
         <div style={{ background: "#0a0f16", border: `1px solid ${position.active ? "#00ff8833" : "#0d2030"}`, borderRadius: 8, padding: 14, boxShadow: position.active ? "0 0 20px #00ff8811" : "none" }}>
-          <SectionHeader title="ACTIVE POSITION" />
-          {position.active ? (
-            <>
+          <SectionHeader title="LIVE POSITION PLAN" />
+          <>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <span style={{ padding: "3px 10px", background: "#00ff8811", border: "1px solid #00ff8833", borderRadius: 4, fontSize: 12, fontWeight: 700, color: "#00ff88" }}>{position.direction}</span>
+                <span style={{ padding: "3px 10px", background: position.active ? "#00ff8811" : "#070a0f", border: `1px solid ${position.active ? "#00ff8833" : "#0d2030"}`, borderRadius: 4, fontSize: 12, fontWeight: 700, color: position.active ? "#00ff88" : "#446688" }}>{position.active ? position.direction : "NO LIVE ENTRY"}</span>
                 <span style={{ fontSize: 14, color: "#c8d8e8" }}>{position.asset}</span>
                 <span style={{ fontSize: 11, color: "#446688" }}>×{position.leverage}</span>
               </div>
@@ -519,8 +538,8 @@ export default function PositionsTab() {
                   ["STOP LOSS", fmtUSD(position.stop), "#ff4466"],
                   ["TARGET", fmtUSD(position.target), "#00ff88"],
                   ["RISK/REWARD", position.rr, "#00cfff"],
-                  ["DAYS HELD", position.daysHeld + " days", "#ffaa00"],
-                  ["UNREALIZED PNL", "+" + position.unrealizedPnl + "%", "#00ff88"],
+                  ["CURRENT", fmtUSD(position.currentPrice), "#ffaa00"],
+                  ["ENTRY DIST", Number.isFinite(position.distanceToEntryPct) ? `${position.distanceToEntryPct > 0 ? "+" : ""}${position.distanceToEntryPct.toFixed(1)}%` : "--", "#ffaa00"],
                   ["FIB ENTRY", position.fibEntry + " level", "#00cfff"],
                   ["REGIME", position.regime.replace(/_/g," "), "#99bbcc"],
                 ].map(([l, v, c]) => (
@@ -530,13 +549,12 @@ export default function PositionsTab() {
                   </div>
                 ))}
               </div>
+              {!position.active && (
+                <div style={{ marginTop: 8, padding: "8px 10px", background: "#070a0f", border: "1px solid #0d2030", borderRadius: 4, fontSize: 10, color: "#446688" }}>
+                  No exchange account is connected, so this panel shows the live BTC setup plan only. An entry becomes active here when all signal gates reach execution threshold.
+                </div>
+              )}
             </>
-          ) : (
-            <div style={{ padding: "24px 0", textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: "#335566", marginBottom: 6 }}>NO ACTIVE POSITION</div>
-              <div style={{ fontSize: 10, color: "#223344" }}>waiting for elite setup</div>
-            </div>
-          )}
         </div>
 
         {/* Signal gate status */}
@@ -547,7 +565,7 @@ export default function PositionsTab() {
               ["GATEWAY 1", "Macro Regime Valid", regime.valid, regime.valid ? "NH-HMM: CAPITULATION_RECOVERY" : "BLOCKED — BEAR EXPANSION"],
               ["GATEWAY 2", "Smart Money Aligned", smartMoney.battleScore > 20, `Battle Score: ${smartMoney.battleScore > 0 ? "+" : ""}${smartMoney.battleScore}`],
               ["GATEWAY 3", "Fibonacci Strike Zone", fib.inOTE, fib.inOTE ? "Price in OTE zone" : `${Math.abs(fib.nearestZone?.pctFromCurrent || 0).toFixed(1)}% from nearest zone`],
-              ["GATEWAY 4", "Cooldown Elapsed", cooldownDays >= 25, cooldownDays >= 25 ? "25+ days elapsed" : `${25 - cooldownDays} days remaining`],
+              ["GATEWAY 4", "Account Position", position.active, position.active ? "Signal plan is executable" : "No connected exchange position"],
             ].map(([id, label, pass, detail]) => (
               <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 4, borderRadius: 4, background: pass ? "#00ff8808" : "#070a0f", border: `1px solid ${pass ? "#00ff8822" : "#0d2030"}` }}>
                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: pass ? "#00ff88" : "#335566", boxShadow: pass ? "0 0 6px #00ff88" : "none", flexShrink: 0 }} />
@@ -574,7 +592,7 @@ export default function PositionsTab() {
 
       {/* Disclaimer */}
       <div style={{ fontSize: 10, color: "#1a2a3a", textAlign: "center", padding: "8px 0", fontFamily: mono }}>
-        POSITIONS TAB — for research only · not financial advice · all signals are simulated until real data APIs are connected
+        POSITIONS TAB — for research only · not financial advice · market signals use public live data, account positions require exchange integration
       </div>
     </div>
   );

@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const clampedScore = Math.max(-100, Math.min(100, battleScore));
 
     // Conviction based on how extreme the reading is
-    const conviction = Math.min(95, Math.round(Math.abs(clampedScore) * 0.6 + 40 + Math.random() * 5));
+    const conviction = Math.min(95, Math.round(Math.abs(clampedScore) * 0.6 + 42));
 
     let status, statusColor;
     if (clampedScore > 50)       { status = "STRONG LONG";  statusColor = "#00ff88"; }

@@ -134,6 +134,7 @@ export default function Home() {
   const [chartTf,setChartTf]=useState("1d");
   const [chartExpanded,setChartExpanded]=useState(false);
   const [chartView,setChartView]=useState({start:null,count:null});
+  const [chartYScale,setChartYScale]=useState(1);
   const [chartRevision,setChartRevision]=useState(0);
   const chartRef=useRef(null);
   const chartGeomRef=useRef(null);
@@ -163,6 +164,7 @@ export default function Home() {
   useEffect(()=>{
     chartHoverRef.current=null;
     setChartView({start:null,count:null});
+    setChartYScale(1);
     setChartRevision(v=>v+1);
   },[chartTf]);
 
@@ -223,7 +225,7 @@ export default function Home() {
     // Small delay to ensure DOM is laid out
     const timer = setTimeout(drawChart, 50);
     return () => clearTimeout(timer);
-  },[priceData,chartTf,chartRevision,chartExpanded,chartView]);
+  },[priceData,chartTf,chartRevision,chartExpanded,chartView,chartYScale]);
 
   const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 
@@ -272,9 +274,11 @@ export default function Home() {
     const prices=[...candles.flatMap(c=>[c.h,c.l]),...indicatorPrices];
     const minP=Math.min(...prices), maxP=Math.max(...prices);
     const rawRange=maxP-minP||Math.abs(maxP)*0.01||1;
-    const margin=rawRange*0.08;
-    const scaleMin=minP-margin;
-    const scaleMax=maxP+margin;
+    const scaledRange=rawRange*chartYScale;
+    const center=(minP+maxP)/2;
+    const margin=scaledRange*0.08;
+    const scaleMin=center-(scaledRange/2)-margin;
+    const scaleMax=center+(scaledRange/2)+margin;
     const range=scaleMax-scaleMin;
 
     const toY=p=>pad.top+ch-(((p-scaleMin)/range)*ch);
@@ -478,6 +482,11 @@ export default function Home() {
   const resetChartView=()=>{
     chartHoverRef.current=null;
     setChartView({start:null,count:null});
+    setChartYScale(1);
+  };
+
+  const changeChartYScale=(factor)=>{
+    setChartYScale(value=>clamp(Math.round(value*factor*100)/100,0.35,3));
   };
 
   const runPipeline=async()=>{
@@ -694,8 +703,10 @@ export default function Home() {
                 {CHART_TFS.map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button className="tf-btn" onClick={()=>zoomChart(1.25)} disabled={!chartCanZoomOut} title="Zoom out">−</button>
-                <button className="tf-btn" onClick={()=>zoomChart(0.8)} disabled={!chartCanZoomIn} title="Zoom in">+</button>
+                <button className="tf-btn" onClick={()=>zoomChart(1.25)} disabled={!chartCanZoomOut} title="Show more time">T−</button>
+                <button className="tf-btn" onClick={()=>zoomChart(0.8)} disabled={!chartCanZoomIn} title="Show less time">T+</button>
+                <button className="tf-btn" onClick={()=>changeChartYScale(1.2)} disabled={chartYScale>=3} title="Compress price scale">P−</button>
+                <button className="tf-btn" onClick={()=>changeChartYScale(0.82)} disabled={chartYScale<=0.35} title="Expand price scale">P+</button>
                 <button className="tf-btn" onClick={resetChartView} disabled={!priceData?.candles?.length} title="Return to latest candles">Latest</button>
                 <button className="tf-btn" onClick={()=>setChartExpanded(v=>!v)} title={chartExpanded?"Collapse chart":"Expand chart"}>{chartExpanded?"×":"□"}</button>
                 <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} title="Refresh chart" style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
