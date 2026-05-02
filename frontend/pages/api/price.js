@@ -8,11 +8,22 @@ export default async function handler(req, res) {
   const tf = normalizeTimeframe(req.query.tf || "1d"); // 15m, 1h, 4h, 1d, 1w, 1m
   const meta = getTokenMeta(ticker);
   const resolvedMeta = meta || await resolveCoinGeckoMeta(ticker);
+  const shouldUseCoinGeckoOnly = resolvedMeta?.chain === "native";
 
   const { limit } = getCandleConfig(tf);
 
   try {
     const cgQuote = resolvedMeta?.coingeckoId ? await getCoinGeckoQuote(resolvedMeta.coingeckoId) : null;
+
+    if (shouldUseCoinGeckoOnly && cgQuote) {
+      const candles = await getCoinGeckoCandles(resolvedMeta.coingeckoId, tf);
+      const fib_signal = await buildFibonacciSignal(ticker, cgQuote.usd, {
+        coingeckoId: resolvedMeta.coingeckoId,
+        currentTf: tf,
+        currentCandles: candles,
+      });
+      return res.status(200).json(buildCoinGeckoResponse(ticker, resolvedMeta, cgQuote, candles, fib_signal));
+    }
 
     // Step 1 — get pair address from token address
     let pairAddress, chainId, pairData;
@@ -381,12 +392,12 @@ function getCandleConfig(tf) {
   const hour = 60 * minute;
   const day = 24 * hour;
   const map = {
-    "15m": { limit: 96, days: 1, bucketMs: 15 * minute },
-    "1h": { limit: 96, days: 7, bucketMs: hour },
-    "4h": { limit: 90, days: 30, bucketMs: 4 * hour },
-    "1d": { limit: 90, days: 180, bucketMs: day },
-    "1w": { limit: 52, days: 730, bucketMs: 7 * day },
-    "1m": { limit: 36, days: "max", bucketMs: 30 * day },
+    "15m": { limit: 192, days: 2, bucketMs: 15 * minute },
+    "1h": { limit: 240, days: 14, bucketMs: hour },
+    "4h": { limit: 240, days: 60, bucketMs: 4 * hour },
+    "1d": { limit: 365, days: 365, bucketMs: day },
+    "1w": { limit: 156, days: 1095, bucketMs: 7 * day },
+    "1m": { limit: 120, days: "max", bucketMs: 30 * day },
   };
   return map[tf] || map["1d"];
 }

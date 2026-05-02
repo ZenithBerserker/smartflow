@@ -133,11 +133,12 @@ export default function Home() {
   const [longShortLoading,setLongShortLoading]=useState(false);
   const [chartTf,setChartTf]=useState("1d");
   const [chartExpanded,setChartExpanded]=useState(false);
-  const [chartZoom,setChartZoom]=useState(1);
+  const [chartView,setChartView]=useState({start:null,count:null});
   const [chartRevision,setChartRevision]=useState(0);
   const chartRef=useRef(null);
   const chartGeomRef=useRef(null);
   const chartHoverRef=useRef(null);
+  const chartDragRef=useRef(null);
 
   useEffect(()=>{
     const f=async()=>{ try{ const r=await fetch("/api/zscores"); const d=await r.json(); setZscores(d.tickers||[]); }catch{} };
@@ -152,7 +153,7 @@ export default function Home() {
   useEffect(()=>{
     setResult(null);
     chartHoverRef.current=null;
-    setChartZoom(1);
+    setChartView({start:null,count:null});
     setChartRevision(v=>v+1);
     fetchPrice(selected);
     fetchLongShort(selected);
@@ -161,9 +162,15 @@ export default function Home() {
 
   useEffect(()=>{
     chartHoverRef.current=null;
-    setChartZoom(1);
+    setChartView({start:null,count:null});
     setChartRevision(v=>v+1);
   },[chartTf]);
+
+  useEffect(()=>{
+    const onResize=()=>setChartRevision(v=>v+1);
+    window.addEventListener("resize",onResize);
+    return()=>window.removeEventListener("resize",onResize);
+  },[]);
 
   const fetchPrice=async(ticker, timeframe)=>{
     setPriceLoading(true);
@@ -216,7 +223,20 @@ export default function Home() {
     // Small delay to ensure DOM is laid out
     const timer = setTimeout(drawChart, 50);
     return () => clearTimeout(timer);
-  },[priceData,chartTf,chartRevision,chartExpanded,chartZoom]);
+  },[priceData,chartTf,chartRevision,chartExpanded,chartView]);
+
+  const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+
+  const getDefaultVisibleCount=(total)=>Math.min(total,chartExpanded?180:110);
+
+  const resolveChartWindow=(total,view=chartView)=>{
+    if(total<=0) return {start:0,count:0};
+    const minCount=Math.min(total,18);
+    const count=clamp(Math.round(view.count || getDefaultVisibleCount(total)),minCount,total);
+    const latestStart=Math.max(0,total-count);
+    const start=view.start===null?latestStart:clamp(Math.round(view.start),0,latestStart);
+    return {start,count};
+  };
 
   const drawChart = () => {
     if(!priceData?.candles||!chartRef.current) return;
@@ -239,9 +259,8 @@ export default function Home() {
       ctx.fillText("live candle data unavailable",W/2,H/2);
       return;
     }
-    const visibleCount=Math.max(12,Math.ceil(allCandles.length/chartZoom));
-    const offset=Math.max(0,allCandles.length-visibleCount);
-    const candles=allCandles.slice(offset);
+    const {start:offset,count:visibleCount}=resolveChartWindow(allCandles.length);
+    const candles=allCandles.slice(offset,offset+visibleCount);
     const studies=buildChartStudies(candles,chartTf);
     const pad={top:18,right:68,bottom:28,left:8};
     const cw=W-pad.left-pad.right, ch=H-pad.top-pad.bottom;
@@ -252,13 +271,17 @@ export default function Home() {
     ].filter(Number.isFinite);
     const prices=[...candles.flatMap(c=>[c.h,c.l]),...indicatorPrices];
     const minP=Math.min(...prices), maxP=Math.max(...prices);
-    const range=maxP-minP||maxP*0.01;
+    const rawRange=maxP-minP||Math.abs(maxP)*0.01||1;
+    const margin=rawRange*0.08;
+    const scaleMin=minP-margin;
+    const scaleMax=maxP+margin;
+    const range=scaleMax-scaleMin;
 
-    const toY=p=>pad.top+ch-(((p-minP)/range)*ch);
+    const toY=p=>pad.top+ch-(((p-scaleMin)/range)*ch);
     const toX=i=>pad.left+(i/candles.length)*cw+(cw/candles.length)*0.5;
-    const priceFromY=y=>maxP-(((y-pad.top)/ch)*(maxP-minP));
-    const candleW=Math.max(2,(cw/candles.length)*0.65);
-    chartGeomRef.current={W,H,pad,cw,ch,minP,maxP,toX,toY,priceFromY,candleCount:candles.length,offset};
+    const priceFromY=y=>scaleMax-(((y-pad.top)/ch)*range);
+    const candleW=clamp((cw/candles.length)*0.48,1.25,7);
+    chartGeomRef.current={W,H,pad,cw,ch,minP:scaleMin,maxP:scaleMax,toX,toY,priceFromY,candleCount:candles.length,offset,totalCount:allCandles.length,candleStep:cw/candles.length};
 
     const drawSeries=(values,yFn,color,width=1,dash=[])=>{
       ctx.save();
@@ -282,7 +305,7 @@ export default function Home() {
     for(let i=0;i<=4;i++){
       const y=pad.top+(ch/4)*i;
       ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
-      const p=maxP-((maxP-minP)/4)*i;
+      const p=scaleMax-(range/4)*i;
       ctx.fillStyle="#335566";
       ctx.font="9px 'Share Tech Mono',monospace";
       ctx.textAlign="left";
@@ -402,22 +425,59 @@ export default function Home() {
   const handleChartMove=(event)=>{
     const point=getCanvasPoint(event);
     if(!point) return;
+    if(chartDragRef.current){
+      const geom=chartGeomRef.current;
+      const drag=chartDragRef.current;
+      const movedCandles=Math.round((drag.x-point.x)/(geom.candleStep||1));
+      setChartView(prev=>{
+        const current=resolveChartWindow(geom.totalCount,prev);
+        const latestStart=Math.max(0,geom.totalCount-current.count);
+        return {...current,start:clamp(drag.start+movedCandles,0,latestStart)};
+      });
+    }
     chartHoverRef.current=point;
     drawChart();
   };
 
   const handleChartLeave=()=>{
     chartHoverRef.current=null;
+    chartDragRef.current=null;
     drawChart();
   };
 
   const handleChartWheel=(event)=>{
     event.preventDefault();
-    changeChartZoom(event.deltaY > 0 ? -0.5 : 0.5);
+    zoomChart(event.deltaY > 0 ? 1.18 : 0.82,event);
   };
 
-  const changeChartZoom=(delta)=>{
-    setChartZoom(value=>Math.min(4,Math.max(1,Math.round((value+delta)*10)/10)));
+  const zoomChart=(factor,event=null)=>{
+    const total=priceData?.candles?.length||0;
+    if(!total) return;
+    const geom=chartGeomRef.current;
+    const anchorRatio=event&&geom?clamp((event.clientX-chartRef.current.getBoundingClientRect().left-geom.pad.left)/geom.cw,0,1):0.5;
+    setChartView(prev=>{
+      const current=resolveChartWindow(total,prev);
+      const nextCount=clamp(Math.round(current.count*factor),Math.min(total,18),total);
+      const anchorIndex=current.start+(current.count*anchorRatio);
+      const nextStart=clamp(Math.round(anchorIndex-(nextCount*anchorRatio)),0,Math.max(0,total-nextCount));
+      return {start:nextStart,count:nextCount};
+    });
+  };
+
+  const handleChartMouseDown=(event)=>{
+    const point=getCanvasPoint(event);
+    const geom=chartGeomRef.current;
+    if(!point||!geom) return;
+    chartDragRef.current={x:point.x,start:geom.offset};
+  };
+
+  const handleChartMouseUp=()=>{
+    chartDragRef.current=null;
+  };
+
+  const resetChartView=()=>{
+    chartHoverRef.current=null;
+    setChartView({start:null,count:null});
   };
 
   const runPipeline=async()=>{
@@ -463,6 +523,9 @@ export default function Home() {
   const liveRsi=s2?.rsi??priceData?.technicals?.rsi;
   const liveObv=s2?.obv_signal||priceData?.technicals?.obv_signal;
   const fibSignal=priceData?.fib_signal;
+  const chartWindow=resolveChartWindow(priceData?.candles?.length||0);
+  const chartCanZoomIn=chartWindow.count>Math.min(priceData?.candles?.length||0,18);
+  const chartCanZoomOut=chartWindow.count<(priceData?.candles?.length||0);
 
   const css=`
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
@@ -631,8 +694,9 @@ export default function Home() {
                 {CHART_TFS.map(tf=>(
                   <button key={tf} className={`tf-btn${chartTf===tf?" active":""}`} onClick={()=>{setChartTf(tf);fetchPrice(selected,tf);}}>{tf}</button>
                 ))}
-                <button className="tf-btn" onClick={()=>changeChartZoom(-0.5)} disabled={chartZoom<=1} title="Zoom out">−</button>
-                <button className="tf-btn" onClick={()=>changeChartZoom(0.5)} disabled={chartZoom>=4} title="Zoom in">+</button>
+                <button className="tf-btn" onClick={()=>zoomChart(1.25)} disabled={!chartCanZoomOut} title="Zoom out">−</button>
+                <button className="tf-btn" onClick={()=>zoomChart(0.8)} disabled={!chartCanZoomIn} title="Zoom in">+</button>
+                <button className="tf-btn" onClick={resetChartView} disabled={!priceData?.candles?.length} title="Return to latest candles">Latest</button>
                 <button className="tf-btn" onClick={()=>setChartExpanded(v=>!v)} title={chartExpanded?"Collapse chart":"Expand chart"}>{chartExpanded?"×":"□"}</button>
                 <button className="refresh-btn" onClick={()=>fetchPrice(selected,chartTf)} title="Refresh chart" style={{padding:"3px 8px",background:"transparent",border:"1px solid #1a2a3a",color:"#335566",fontFamily:"'Share Tech Mono',monospace",fontSize:10,cursor:"pointer",borderRadius:3}}>↻</button>
               </div>
@@ -644,8 +708,10 @@ export default function Home() {
               height={200}
               onMouseMove={handleChartMove}
               onMouseLeave={handleChartLeave}
+              onMouseDown={handleChartMouseDown}
+              onMouseUp={handleChartMouseUp}
               onWheel={handleChartWheel}
-              style={{width:"100%",height:chartExpanded?"calc(100vh - 86px)":"200px",display:"block",cursor:"crosshair",flex:chartExpanded?1:"none"}}
+              style={{width:"100%",height:chartExpanded?"calc(100vh - 86px)":"200px",display:"block",cursor:chartDragRef.current?"grabbing":"crosshair",flex:chartExpanded?1:"none"}}
             />
           </div>
         </div>
