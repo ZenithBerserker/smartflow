@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Head from "next/head";
 import { ChainBadge, LongShortPanel, NCard, SCard } from "../components/DashboardWidgets";
+import PositionsTab from "../components/PositionsTab";
 import { fmtNum, fmtPrice } from "../lib/format";
 import { TRACKED_TICKERS } from "../lib/tokens";
 
@@ -552,6 +553,10 @@ export default function Home() {
       .lookup-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
       .lookup-mentions{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}
       .lookup-steps{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+      .positions-grid,.positions-fib-grid{grid-template-columns:1fr!important}
+      .positions-readiness{align-items:flex-start!important}
+      .positions-readiness-bars{width:100%!important;justify-content:space-between!important;overflow-x:auto!important}
+      .positions-canvas{height:190px!important}
     }
     @media (max-width: 380px){
       .metric-grid,.step-grid,.lookup-stats{grid-template-columns:1fr!important}
@@ -581,7 +586,7 @@ export default function Home() {
 
       {/* Tabs */}
       <div className="tabs" style={{display:"flex",gap:8,marginBottom:16}}>
-        {[["pipeline","Scanner"],["discover","Trending"],["lookup","Lookup"]].map(([id,label])=>(
+        {[["pipeline","Scanner"],["discover","Trending"],["lookup","Lookup"],["positions","Positions"]].map(([id,label])=>(
           <button key={id} className={`tab-btn${tab===id?" active":""}`} onClick={()=>setTab(id)}>{label}</button>
         ))}
       </div>
@@ -842,6 +847,9 @@ export default function Home() {
           {lookupResult.signal?.reason&&<div style={{marginTop:12,fontSize:11,color:"#335566",fontFamily:"'Share Tech Mono',monospace",padding:"8px 12px",background:"#070a0f",borderRadius:4,border:"1px solid #0d2030"}}>{lookupResult.signal.reason}</div>}
         </div>}
       </div>}
+
+      {/* ── POSITIONS ── */}
+      {tab==="positions"&&<PositionsTab/>}
 
       <div style={{marginTop:20,paddingTop:12,borderTop:"1px solid #0a1520",fontSize:10,color:"#1a2a3a",textAlign:"center",fontFamily:"'Share Tech Mono',monospace"}}>
         Research only. Not financial advice.
